@@ -1,0 +1,55 @@
+{
+  "project_info": {
+    "project_number": "972221714891",
+    "firebase_url": "https://arven-iot-default-rtdb.asia-southeast1.firebasedatabase.app",
+    "project_id": "arven-iot",
+    "storage_bucket": "arven-iot.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:972221714891:android:020cf023b1ad0cf8cea64e",
+        "android_client_info": {
+          "package_name": "com.example.smartfarmingiot"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "972221714891-7hfij73dr2km9q08fniq8590sm9dt7gd.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.smartfarmingiot",
+            "certificate_hash": "f5ba10ab382f164daaa1dc13f6d31e005f061668"
+          }
+        },
+        {
+          "client_id": "972221714891-2rpksv1hc4albqaebq1947i6ghu8seja.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDLSPy_5UzG2vh02ukIjYVMeYcyUN05ZcE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "972221714891-2rpksv1hc4albqaebq1947i6ghu8seja.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "972221714891-q8ntkno2vpchd00gmcirieob6d2rcpqd.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.smartfarmingiot"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

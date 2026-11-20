@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dokumen Rancangan ARVEN Smart Farming IoT</title>
+  <style>
+    :root{--blue:#1d4ed8;--dark:#0f172a;--text:#243247;--muted:#64748b;--line:#cbd5e1;--soft:#f8fafc;--warn:#92400e;--warnbg:#fffbeb;--danger:#991b1b;--dangerbg:#fef2f2;--ok:#065f46;--okbg:#ecfdf5}
+    *{box-sizing:border-box} body{margin:0;padding:24px;background:#eef2f7;color:var(--text);font:14px/1.6 Arial, sans-serif}
+    .toolbar{max-width:920px;margin:0 auto 14px;text-align:right}.toolbar button{border:0;border-radius:8px;background:var(--blue);color:white;padding:10px 18px;font-weight:bold;cursor:pointer}
+    .paper{max-width:920px;margin:auto;background:#fff;padding:42px 50px;box-shadow:0 8px 30px #0f172a18;border:1px solid var(--line)}
+    header{display:flex;justify-content:space-between;gap:24px;border-bottom:3px solid var(--blue);padding-bottom:22px;margin-bottom:28px}h1{font-size:27px;line-height:1.2;margin:5px 0;color:var(--dark)}h2{font-size:19px;color:var(--dark);border-left:4px solid var(--blue);padding-left:10px;margin:32px 0 14px}h3{font-size:15px;color:#1e3a8a;margin:20px 0 8px}p{margin:8px 0}.subtitle{color:var(--blue);font-weight:bold;letter-spacing:1px}.meta{text-align:right;font-size:12px;color:var(--muted);white-space:nowrap}.badge{display:inline-block;background:#eff6ff;border:1px solid #bfdbfe;color:var(--blue);border-radius:6px;padding:3px 9px;font-size:11px;font-weight:bold}
+    .box{padding:14px 17px;border-radius:8px;margin:14px 0}.danger{background:var(--dangerbg);border:1px solid #fca5a5;border-left:4px solid #dc2626;color:var(--danger)}.warning{background:var(--warnbg);border:1px solid #fcd34d;border-left:4px solid #d97706;color:var(--warn)}.ok{background:var(--okbg);border:1px solid #a7f3d0;border-left:4px solid #059669;color:var(--ok)}
+    table{width:100%;border-collapse:collapse;margin:14px 0 22px;font-size:13px}th{background:#f1f5f9;color:var(--dark);text-align:left}th,td{border:1px solid var(--line);padding:9px 11px;vertical-align:top}tr:nth-child(even){background:#f8fafc}.code{font-family:Consolas,monospace;background:#e2e8f0;border:1px solid #cbd5e1;border-radius:4px;padding:1px 5px;font-size:12px}.diagram{background:#f8fafc;border:1px solid var(--line);border-radius:10px;padding:18px;margin:16px 0;overflow:auto}pre{font:13px/1.5 Consolas,monospace;margin:0;white-space:pre-wrap;color:#0f172a}
+    ol{padding-left:28px}li{margin:10px 0}.footer{margin-top:35px;border-top:1px solid var(--line);padding-top:15px;color:var(--muted);font-size:11px;display:flex;justify-content:space-between;gap:15px}
+    @media print{body{background:#fff;padding:0}.toolbar{display:none}.paper{box-shadow:none;border:0;padding:0;max-width:none}.break{page-break-before:always}@page{size:A4;margin:15mm}}
+  </style>
+</head>
+<body>
+  <div class="toolbar"><button onclick="window.print()">🖨 Cetak / Simpan PDF (Ctrl + P)</button></div>
+  <main class="paper">
+    <header>
+      <div><span class="badge">DOKUMEN RANCANGAN TEKNIS</span><h1>ARVEN SMART FARMING IoT</h1><div class="subtitle">Rancangan Wiring, Daya, Relay, Sensor &amp; Pompa</div></div>
+      <div class="meta"><strong>ESP32 DevKit V1</strong><br>Adaptor 12V 2A + USB 5V<br>Revisi Hardware: 3.0</div>
+    </header>
+
+    <h2>1. Daftar Komponen</h2>
+    <table><thead><tr><th>No.</th><th>Komponen</th><th>Fungsi</th><th>Catatan</th></tr></thead><tbody>
+      <tr><td>1</td><td>ESP32 DevKit V1</td><td>Membaca sensor, terhubung Wi-Fi/Firebase, mengontrol driver relay</td><td>Daya dari USB 5V</td></tr>
+      <tr><td>2</td><td>Soil Moisture Sensor</td><td>Mengukur kelembapan tanah</td><td>Output analog A0</td></tr>
+      <tr><td>3</td><td>DHT22</td><td>Mengukur suhu dan kelembapan udara</td><td>Gunakan label +, out, − pada modul</td></tr>
+      <tr><td>4</td><td>Rain Sensor</td><td>Mendeteksi presipitasi/hujan</td><td>Output digital D0</td></tr>
+      <tr><td>5</td><td>Adaptor 12V 2A</td><td>Menyuplai relay dan pompa</td><td>Jangan sambungkan langsung ke ESP32</td></tr>
+      <tr><td>6</td><td>Relay 12V 1 channel</td><td>Sakelar listrik pompa</td><td>Input low-level/active-low sesuai hasil pengujian</td></tr>
+      <tr><td>7</td><td>Pompa DC 12V</td><td>Menyiram tanaman</td><td>Jangan dijalankan tanpa air</td></tr>
+      <tr><td>8</td><td>Rumah sekring waterproof + blade fuse standar 2A</td><td>Proteksi jalur positif pompa</td><td>Sekring dipasang seri di jalur +12V</td></tr>
+      <tr><td>9</td><td>Transistor NPN BC547 TO-92</td><td>Driver aman antara ESP32 dan IN relay 12V</td><td>Ikuti nomor kaki pada datasheet/produk</td></tr>
+      <tr><td>10</td><td>Resistor 1kΩ 1/4W</td><td>Membatasi arus basis BC547</td><td>Dipakai antara GPIO 26 dan basis</td></tr>
+      <tr><td>11</td><td>LED + resistor 220Ω</td><td>Indikator pompa/sistem</td><td>Opsional jika memakai LED bawaan GPIO 2</td></tr>
+    </tbody></table>
+
+    <h2>2. Pembagian Sumber Daya</h2>
+    <div class="box danger"><strong>PERINGATAN:</strong> Jangan pernah menyambungkan output adaptor 12V ke pin 5V, VIN, 3.3V, atau GPIO ESP32. ESP32 menggunakan USB 5V; adaptor 12V hanya untuk relay dan pompa.</div>
+    <table><thead><tr><th>Sumber daya</th><th>Memberi daya ke</th><th>Catatan</th></tr></thead><tbody>
+      <tr><td>USB 5V</td><td>ESP32 dan semua sensor</td><td>ESP32 tetap terhubung ke USB charger/laptop</td></tr>
+      <tr><td>Adaptor 12V 2A</td><td>Relay 12V dan pompa DC 12V</td><td>Positif wajib melewati sekring 2A</td></tr>
+      <tr><td>Common ground</td><td>Adaptor −, relay GND, ESP32 GND, emitter BC547, pompa −</td><td>Semua ground harus terhubung bersama</td></tr>
+    </tbody></table>
+
+    <h2>3. Diagram Jalur Daya dan Pompa</h2>
+    <div class="diagram"><pre>
+ADAPTOR 12V
+  + ───► INPUT RUMAH SEKRING
+             │
+             ▼
+       SEKRING BLADE 2A
+             │ OUTPUT +12V TERLINDUNGI
+             ├────────► VCC RELAY
+             └────────► COM / 公共端 RELAY
+
+NO / 常开 RELAY ─────────► POSITIF (+) POMPA
+NC / 常闭 RELAY ─────────► KOSONG
+
+ADAPTOR − ───────────────► NEGATIF (−) POMPA
+      ├──────────────────► GND RELAY
+      ├──────────────────► GND ESP32
+      └──────────────────► EMITTER (E) BC547
+    </pre></div>
+
+    <h2>4. Tabel Terminal Relay</h2>
+    <p>Gunakan tulisan pada PCB relay. Jika relay diputar, posisi kiri/kanan dapat berubah.</p>
+    <table><thead><tr><th>Tulisan pada relay</th><th>Nama umum</th><th>Sambungkan ke</th></tr></thead><tbody>
+      <tr><td><strong>公共端</strong></td><td>COM / Common</td><td>Output +12V setelah sekring 2A</td></tr>
+      <tr><td><strong>常开</strong></td><td>NO / Normally Open</td><td>Positif pompa</td></tr>
+      <tr><td><strong>常闭</strong></td><td>NC / Normally Closed</td><td>Kosong</td></tr>
+      <tr><td><strong>VCC</strong></td><td>Daya relay</td><td>Output +12V setelah sekring 2A</td></tr>
+      <tr><td><strong>GND</strong></td><td>Ground relay</td><td>Adaptor − dan GND ESP32</td></tr>
+      <tr><td><strong>IN</strong></td><td>Sinyal kontrol</td><td>Collector (C) BC547</td></tr>
+    </tbody></table>
+
+    <div class="break"></div>
+    <h2>5. Driver BC547 dan Resistor 1kΩ</h2>
+    <div class="box warning"><strong>Jangan hubungkan IN relay langsung ke GPIO 26.</strong> Relay 12V Anda aktif ketika IN ditarik ke GND. BC547 menjadi sakelar perantara agar tegangan 12V tidak masuk ke GPIO ESP32.</div>
+    <div class="diagram"><pre>
+GPIO 26 ESP32 ───► Resistor 1kΩ ───► Base (B) BC547
+
+Collector (C) BC547 ───────────────► IN relay
+Emitter (E) BC547 ─────────────────► GND bersama
+    </pre></div>
+    <table><thead><tr><th>Kaki BC547</th><th>Sambungan</th></tr></thead><tbody>
+      <tr><td>Collector (C), nomor 3 pada diagram produk</td><td>Pin IN relay</td></tr>
+      <tr><td>Base (B), nomor 2 pada diagram produk</td><td>Ujung resistor 1kΩ</td></tr>
+      <tr><td>Emitter (E), nomor 1 pada diagram produk</td><td>GND bersama</td></tr>
+      <tr><td>Ujung resistor 1kΩ lainnya</td><td>GPIO 26 / D26 ESP32</td></tr>
+    </tbody></table>
+    <p><strong>Catatan:</strong> Untuk BC547 pada diagram produk Anda, sisi datar bertuliskan BC547 menghadap Anda: kiri = kaki 3 Collector, tengah = kaki 2 Base, kanan = kaki 1 Emitter. Tetap cocokkan dengan marking komponen yang diterima.</p>
+
+    <h2>6. Sambungan Sensor ke ESP32</h2>
+    <table><thead><tr><th>Komponen</th><th>Pin komponen</th><th>Tujuan ESP32</th></tr></thead><tbody>
+      <tr><td rowspan="3">Soil Moisture</td><td>VCC</td><td>3.3V</td></tr><tr><td>GND</td><td>GND</td></tr><tr><td>A0</td><td>GPIO 34 / D34</td></tr>
+      <tr><td rowspan="3">Rain Sensor</td><td>VCC</td><td>3.3V</td></tr><tr><td>GND</td><td>GND</td></tr><tr><td>D0</td><td>GPIO 32 / D32</td></tr>
+      <tr><td rowspan="3">DHT22</td><td>+ / VCC</td><td>3.3V atau sumber yang sudah terbukti normal</td></tr><tr><td>out / DATA</td><td>GPIO 4 / D4</td></tr><tr><td>− / GND</td><td>GND</td></tr>
+      <tr><td rowspan="2">LED eksternal</td><td>Anoda + melalui resistor 220Ω</td><td>GPIO 2 / D2</td></tr><tr><td>Katoda −</td><td>GND</td></tr>
+    </tbody></table>
+
+    <h2>7. Urutan Pemasangan</h2>
+    <ol>
+      <li>Cabut adaptor 12V dan USB ESP32.</li>
+      <li>Pasang blade fuse standar 2A ke rumah sekring waterproof.</li>
+      <li>Sambungkan adaptor + ke input rumah sekring.</li>
+      <li>Sambungkan output rumah sekring ke VCC dan COM relay.</li>
+      <li>Sambungkan NO relay ke positif pompa. Biarkan NC kosong.</li>
+      <li>Sambungkan adaptor − ke negatif pompa, GND relay, GND ESP32, dan emitter BC547.</li>
+      <li>Pasang GPIO 26 → resistor 1kΩ → base BC547; collector BC547 → IN relay.</li>
+      <li>Periksa ulang semua kabel sebelum menyalakan sumber daya.</li>
+      <li>Nyalakan USB ESP32 terlebih dahulu dan pastikan sensor terbaca.</li>
+      <li>Letakkan pompa di dalam air, lalu nyalakan adaptor 12V.</li>
+      <li>Uji tombol ON/OFF dari aplikasi. Relay harus berbunyi klik dan pompa harus mengikuti perintah.</li>
+    </ol>
+
+    <h2>8. Checklist Sebelum Uji Pompa</h2>
+    <table><thead><tr><th>Pemeriksaan</th><th>Hasil yang benar</th></tr></thead><tbody>
+      <tr><td>Sekring</td><td>Blade fuse standar 2A terpasang</td></tr>
+      <tr><td>Adaptor +</td><td>Masuk ke sekring, bukan langsung ke ESP32</td></tr>
+      <tr><td>COM / 公共端</td><td>Mendapat +12V dari output sekring</td></tr>
+      <tr><td>NO / 常开</td><td>Terhubung ke positif pompa</td></tr>
+      <tr><td>NC / 常闭</td><td>Kosong</td></tr>
+      <tr><td>IN relay</td><td>Terhubung ke Collector BC547, bukan langsung GPIO</td></tr>
+      <tr><td>Common ground</td><td>Adaptor −, relay GND, ESP32 GND, E BC547, dan pompa − tersambung</td></tr>
+      <tr><td>Pompa</td><td>Terendam air sebelum dinyalakan</td></tr>
+      <tr><td>Isolasi</td><td>Tidak ada serabut tembaga terbuka</td></tr>
+    </tbody></table>
+
+    <div class="box danger"><strong>Hentikan pengujian jika:</strong> sekring langsung putus, ada bau terbakar, kabel panas, relay bergetar terus, pompa menyala tanpa perintah, atau adaptor panas berlebihan. Cabut adaptor 12V sebelum memperbaiki kabel.</div>
+
+    <h2>9. Logika Operasional</h2>
+    <table><thead><tr><th>Mode</th><th>Pompa ON</th><th>Pompa OFF</th></tr></thead><tbody>
+      <tr><td>Otomatis</td><td>Kelembapan ≤ ambang minimum</td><td>Kelembapan ≥ ambang maksimum</td></tr>
+      <tr><td>Terjadwal</td><td>Sesuai jam sesi</td><td>Setelah durasi yang diatur selesai</td></tr>
+      <tr><td>Manual</td><td>Operator menekan Nyalakan</td><td>Operator menekan Hentikan atau auto cut-off</td></tr>
+    </tbody></table>
+
+    <div class="footer"><span>ARVEN Smart Farming System</span><span>Tekan Ctrl + P untuk menyimpan PDF</span></div>
+  </main>
+</body>
+</html>
