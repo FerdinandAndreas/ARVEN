@@ -78,14 +78,17 @@ struct DeviceSettings {
   int moistureThreshold       = 40;   // Batas min pompa ON (%)
   int moistureThresholdMax    = 85;   // Target max pompa OFF (%)
   int wateringDurationSec     = 15;   // Cadangan durasi default
-  int soakIntervalMin         = 20;   // Jeda peresapan air (menit)
+  int soakIntervalMin         = 20;   // Jeda peresapan air (menit, legacy)
+  int soakIntervalSec         = 1200; // Jeda peresapan air (detik)
   float maxTemperatureLimit   = 35.0; // Batas suhu ekstrem
   bool rainDelayEnabled       = true; // Proteksi hujan
-  int manualSafetyTimeoutMin  = 5;    // Batas pengaman auto cut-off mode manual (menit)
-  int scheduleFrequency       = 2;    // 2 atau 3 kali sehari
+  int manualSafetyTimeoutMin  = 5;    // Batas pengaman auto cut-off mode manual (menit, legacy)
+  int manualSafetyTimeoutSec  = 300;  // Batas pengaman auto cut-off mode manual (detik)
+  int scheduleFrequency       = 2;    // 2, 3, atau 4 kali sehari
   String time1                = "07:00";
   String time2                = "16:30";
   String time3                = "12:00";
+  String time4                = "20:00";
   int scheduleDurationSec     = 20;   // Durasi siram terjadwal (detik, bisa menit-menit)
 } deviceSettings;
 
@@ -232,13 +235,13 @@ void processIrrigationLogic() {
       updatePumpState(false, "manual", elapsedSec);
     }
 
-    // Pengaman Auto Cut-Off: mati otomatis jika melebihi batas menit yang diatur
+    // Pengaman Auto Cut-Off: mati otomatis jika melebihi batas waktu detik/menit yang diatur
     if (isPumpActive) {
-      unsigned long safetyLimitMs = (unsigned long)deviceSettings.manualSafetyTimeoutMin * 60000UL;
+      unsigned long safetyLimitMs = (unsigned long)deviceSettings.manualSafetyTimeoutSec * 1000UL;
       if (millis() - pumpStartTime >= safetyLimitMs) {
         int elapsedSec = (millis() - pumpStartTime) / 1000;
-        Serial.printf("[PENGAMAN] Pompa manual melampaui batas %d menit! Auto cut-off aktif.\n",
-                      deviceSettings.manualSafetyTimeoutMin);
+        Serial.printf("[PENGAMAN] Pompa manual melampaui batas %d detik! Auto cut-off aktif.\n",
+                      deviceSettings.manualSafetyTimeoutSec);
         updatePumpState(false, "manual_auto_cutoff", elapsedSec);
         manualPumpCommand = false;
         resetManualCommandInFirebase();
@@ -274,7 +277,7 @@ void processIrrigationLogic() {
   // C. MODE OTOMATIS (Histeresis Ambang Minimum ON -> Target Maksimum OFF)
   if (activeMode == "auto_moisture") {
     bool inSoakPeriod = hasFinishedAutoCycle &&
-                        ((millis() - lastSoakTimestamp) < ((unsigned long)deviceSettings.soakIntervalMin * 60000UL));
+                        ((millis() - lastSoakTimestamp) < ((unsigned long)deviceSettings.soakIntervalSec * 1000UL));
 
     // 1. Pemicu ON: Kelembapan tanah <= ambang minimum
     if (!isPumpActive && !inSoakPeriod) {
@@ -516,14 +519,22 @@ void fetchControlAndSettingsFromFirebase() {
       if (!doc["watering_duration_sec"].isNull()) {
         deviceSettings.wateringDurationSec = doc["watering_duration_sec"].as<int>();
       }
-      if (!doc["soak_interval_min"].isNull()) {
+      if (!doc["soak_interval_sec"].isNull()) {
+        deviceSettings.soakIntervalSec = doc["soak_interval_sec"].as<int>();
+        deviceSettings.soakIntervalMin = max(1, deviceSettings.soakIntervalSec / 60);
+      } else if (!doc["soak_interval_min"].isNull()) {
         deviceSettings.soakIntervalMin = doc["soak_interval_min"].as<int>();
+        deviceSettings.soakIntervalSec = deviceSettings.soakIntervalMin * 60;
       }
       if (!doc["rain_delay_enabled"].isNull()) {
         deviceSettings.rainDelayEnabled = doc["rain_delay_enabled"].as<bool>();
       }
-      if (!doc["manual_safety_timeout_min"].isNull()) {
+      if (!doc["manual_safety_timeout_sec"].isNull()) {
+        deviceSettings.manualSafetyTimeoutSec = doc["manual_safety_timeout_sec"].as<int>();
+        deviceSettings.manualSafetyTimeoutMin = max(1, deviceSettings.manualSafetyTimeoutSec / 60);
+      } else if (!doc["manual_safety_timeout_min"].isNull()) {
         deviceSettings.manualSafetyTimeoutMin = doc["manual_safety_timeout_min"].as<int>();
+        deviceSettings.manualSafetyTimeoutSec = deviceSettings.manualSafetyTimeoutMin * 60;
       }
       if (!doc["schedule"].isNull()) {
         JsonObject sch = doc["schedule"];
@@ -531,6 +542,7 @@ void fetchControlAndSettingsFromFirebase() {
         deviceSettings.time1               = sch["time_1"] | "07:00";
         deviceSettings.time2               = sch["time_2"] | "16:30";
         deviceSettings.time3               = sch["time_3"] | "12:00";
+        deviceSettings.time4               = sch["time_4"] | "20:00";
         deviceSettings.scheduleDurationSec = sch["duration_sec"] | 20;
       }
     }

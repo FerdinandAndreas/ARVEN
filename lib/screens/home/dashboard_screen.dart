@@ -7,11 +7,11 @@ import '../../providers/auth_provider.dart';
 import '../../providers/device_provider.dart';
 import 'widgets/moisture_trend_chart.dart';
 import 'widgets/plant_condition_card.dart';
-import 'widgets/pump_status_card.dart';
 import 'widgets/recent_activity_card.dart';
-import 'widgets/schedule_card.dart';
 import 'widgets/sensor_card.dart';
 import 'widgets/settings_bottom_sheet.dart';
+import 'widgets/control_tab_view.dart';
+import 'widgets/irrigation_tab_view.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -34,23 +34,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   String _getCurrentFormattedDate() {
     final now = DateTime.now();
-    const days = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+    const days = ['minggu', 'senin', 'selasa', 'rabu', 'kamis', 'jumat', 'sabtu'];
+    const months = ['jan', 'feb', 'mar', 'apr', 'mei', 'jun', 'jul', 'agu', 'sep', 'okt', 'nov', 'des'];
     final dayName = days[now.weekday % 7];
     final monthName = months[now.month - 1];
     return '$dayName, ${now.day} $monthName';
-  }
-
-  String _formatDuration(int totalSeconds) {
-    if (totalSeconds < 60) {
-      return '$totalSeconds Detik';
-    }
-    final minutes = totalSeconds ~/ 60;
-    final remainingSeconds = totalSeconds % 60;
-    if (remainingSeconds == 0) {
-      return '$minutes Menit';
-    }
-    return '$minutes Menit $remainingSeconds Detik';
   }
 
   @override
@@ -111,134 +99,94 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  // Top Bar (Responsive for narrow phones & tablets)
+  // Top Bar (Branding Logo + Title "ARVEN" + Subtitle Date & Right Profile Icon)
   Widget _buildTopBar(BuildContext context, String userName, DeviceStatus status, bool isCompact) {
-    final isOnline = status.online;
-
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        // Menu Hamburger Squircle
-        Container(
-          width: isCompact ? 40 : 44,
-          height: isCompact ? 40 : 44,
-          decoration: AppDecorations.squircleIcon(radius: 12),
-          child: IconButton(
-            padding: EdgeInsets.zero,
-            icon: Icon(Icons.notes_rounded, color: AppColors.textPrimary, size: isCompact ? 20 : 22),
-            onPressed: () => _showQuickMenu(context),
-            tooltip: 'Menu Utama',
-          ),
-        ),
-        SizedBox(width: isCompact ? 8 : 12),
-
-        // Notification Bell with Badge "2"
-        Stack(
-          clipBehavior: Clip.none,
+        // Left: Branding Logo + Title "ARVEN" + Subtitle "jumat, 20 nov"
+        Row(
           children: [
             Container(
-              width: isCompact ? 40 : 44,
-              height: isCompact ? 40 : 44,
-              decoration: AppDecorations.squircleIcon(radius: 12),
-              child: Icon(Icons.notifications_none_rounded, color: AppColors.textPrimary, size: isCompact ? 20 : 22),
-            ),
-            Positioned(
-              top: -3,
-              right: -3,
-              child: Container(
-                padding: const EdgeInsets.all(4),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF60A5FA), Color(0xFF2563EB)],
-                  ),
-                  shape: BoxShape.circle,
-                  border: Border.all(color: Colors.white, width: 2),
+              width: isCompact ? 42 : 46,
+              height: isCompact ? 42 : 46,
+              padding: const EdgeInsets.all(7),
+              decoration: BoxDecoration(
+                color: AppColors.surfaceWhite,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: const Color(0xFFE2E8F0),
+                  width: 1.0,
                 ),
-                constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
-                child: const Center(
-                  child: Text(
-                    '2',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 10,
-                      fontWeight: FontWeight.w800,
-                    ),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF2563EB).withValues(alpha: 0.08),
+                    blurRadius: 10,
+                    offset: const Offset(0, 3),
                   ),
-                ),
+                  ...AppDecorations.raisedShadow,
+                ],
               ),
+              child: Image.asset(
+                'assets/logo.webp',
+                fit: BoxFit.contain,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'ARVEN',
+                  style: TextStyle(
+                    fontSize: isCompact ? 15 : 16.5,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 0.6,
+                    color: AppColors.textPrimary,
+                    height: 1.15,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  _getCurrentFormattedDate(),
+                  style: TextStyle(
+                    fontSize: isCompact ? 11.5 : 12.5,
+                    fontWeight: FontWeight.w600,
+                    color: const Color(0xFF8F9FB9),
+                    height: 1.15,
+                  ),
+                ),
+              ],
             ),
           ],
         ),
 
-        const SizedBox(width: 8),
-
-        // Location & Facility Info (Flexible & Ellipsis-safe)
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  const Icon(Icons.location_on_rounded, size: 14, color: AppColors.primary),
-                  const SizedBox(width: 4),
-                  Flexible(
-                    child: Text(
-                      'GREENHOUSE ARVEN',
-                      style: TextStyle(
-                        fontSize: isCompact ? 11.5 : 13,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: -0.2,
-                        color: AppColors.textPrimary,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 2),
-              Text(
-                _getCurrentFormattedDate(),
-                style: const TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.textLight,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
-          ),
-        ),
-        SizedBox(width: isCompact ? 8 : 12),
-
-        // Profile Avatar with Status Ring
+        // Right: Profile Avatar Button
         GestureDetector(
-          onTap: () => _confirmLogout(context),
+          onTap: () => _showQuickMenu(context),
           child: Container(
-            width: isCompact ? 40 : 44,
-            height: isCompact ? 40 : 44,
+            width: isCompact ? 38 : 42,
+            height: isCompact ? 38 : 42,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: AppColors.surfaceWhite,
+              color: const Color(0xFFF0F5FD),
               border: Border.all(
-                color: isOnline ? AppColors.success : AppColors.cardBorder,
-                width: 2.2,
+                color: const Color(0xFFD6E4FA),
+                width: 1.2,
               ),
-              boxShadow: AppDecorations.softRaisedShadow,
-            ),
-            child: Center(
-              child: Text(
-                userName.isNotEmpty ? userName[0].toUpperCase() : 'O',
-                style: TextStyle(
-                  fontSize: isCompact ? 14 : 16,
-                  fontWeight: FontWeight.w800,
-                  color: AppColors.primary,
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF2563EB).withValues(alpha: 0.08),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
                 ),
-              ),
+              ],
+            ),
+            child: Icon(
+              Icons.person_outline_rounded,
+              color: AppColors.primary,
+              size: isCompact ? 20 : 22,
             ),
           ),
         ),
@@ -265,6 +213,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
               // Operational Mode Horizontal Selector
               _buildModeTimelineSelector(device.activeMode, deviceProvider),
+              const SizedBox(height: 16),
+
+              // Quick Pump Control (Nyalakan & Hentikan Pompa Langsung di Beranda)
+              _buildQuickPumpControl(device, deviceProvider),
               const SizedBox(height: 18),
 
               // Sensor Metrics Section Header
@@ -335,75 +287,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  // TAB 2: ACTUATOR & IRRIGATION CONTROL (Adaptive: Side-by-side on wide screens)
+  // TAB 2: MONITORING IRIGASI & KONSUMSI AIR (Debit 600 L/jam & Log Eksekusi)
   Widget _buildActuatorTab(DeviceData device, DeviceProvider deviceProvider) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final bool isTablet = constraints.maxWidth >= 780;
-        final double hPadding = constraints.maxWidth < 360 ? 14 : (isTablet ? 24 : 20);
-
-        return SingleChildScrollView(
-          physics: const BouncingScrollPhysics(),
-          padding: EdgeInsets.symmetric(horizontal: hPadding, vertical: 12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Kendali Pompa Irigasi',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: -0.3,
-                  color: AppColors.textPrimary,
-                ),
-              ),
-              const SizedBox(height: 4),
-              const Text(
-                'Manajemen penyiraman manual, proteksi tekanan, dan status katup',
-                style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
-              ),
-              const SizedBox(height: 16),
-
-              if (isTablet)
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      flex: 6,
-                      child: PumpStatusCard(device: device, provider: deviceProvider),
-                    ),
-                    const SizedBox(width: 18),
-                    Expanded(
-                      flex: 5,
-                      child: Column(
-                        children: [
-                          ScheduleCard(
-                            schedule: device.settings.schedule,
-                            onManageTap: () => _openSettings(context, device.settings),
-                          ),
-                          const SizedBox(height: 18),
-                          const RecentActivityCard(),
-                        ],
-                      ),
-                    ),
-                  ],
-                )
-              else ...[
-                PumpStatusCard(device: device, provider: deviceProvider),
-                const SizedBox(height: 16),
-                ScheduleCard(
-                  schedule: device.settings.schedule,
-                  onManageTap: () => _openSettings(context, device.settings),
-                ),
-                const SizedBox(height: 16),
-                const RecentActivityCard(),
-              ],
-
-              const SizedBox(height: 24),
-            ],
-          ),
-        );
-      },
+    return IrrigationTabView(
+      device: device,
+      deviceProvider: deviceProvider,
     );
   }
 
@@ -481,149 +369,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  // TAB 4: SCHEDULES & DEVICE SETTINGS (Adaptive)
+  // TAB 4: KONTROL SISTEM & PARAMETER (Sesuai Referensi Pengguna)
   Widget _buildSettingsTab(DeviceData device, DeviceProvider deviceProvider) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final bool isTablet = constraints.maxWidth >= 780;
-        final double hPadding = constraints.maxWidth < 360 ? 14 : (isTablet ? 24 : 20);
-
-        return SingleChildScrollView(
-          physics: const BouncingScrollPhysics(),
-          padding: EdgeInsets.symmetric(horizontal: hPadding, vertical: 12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Jadwal & Pengaturan Sistem',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: -0.3,
-                  color: AppColors.textPrimary,
-                ),
-              ),
-              const SizedBox(height: 4),
-              const Text(
-                'Konfigurasi siklus otomatisasi, parameter batas, dan sinkronisasi ESP32',
-                style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
-              ),
-              const SizedBox(height: 16),
-
-              if (isTablet)
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      flex: 6,
-                      child: ScheduleCard(
-                        schedule: device.settings.schedule,
-                        onManageTap: () => _openSettings(context, device.settings),
-                      ),
-                    ),
-                    const SizedBox(width: 18),
-                    Expanded(
-                      flex: 5,
-                      child: _buildParameterSummaryCard(device),
-                    ),
-                  ],
-                )
-              else ...[
-                ScheduleCard(
-                  schedule: device.settings.schedule,
-                  onManageTap: () => _openSettings(context, device.settings),
-                ),
-                const SizedBox(height: 16),
-                _buildParameterSummaryCard(device),
-              ],
-
-              const SizedBox(height: 24),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildParameterSummaryCard(DeviceData device) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: AppDecorations.raisedCard(radius: 22),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Expanded(
-                child: Text(
-                  'Ringkasan Parameter Aktif',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              IconButton(
-                icon: const Icon(Icons.edit_rounded, color: AppColors.primary, size: 20),
-                onPressed: () => _openSettings(context, device.settings),
-                tooltip: 'Ubah Parameter',
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          _buildParamRow('Batas Min (Pompa ON)', '≤ ${device.settings.moistureThreshold}% (Kering)'),
-          const SizedBox(height: 8),
-          _buildParamRow('Target Max (Pompa OFF)', '≥ ${device.settings.moistureThresholdMax}% (Basah)'),
-          const SizedBox(height: 8),
-          _buildParamRow('Durasi Siram Terjadwal', _formatDuration(device.settings.schedule.durationSec)),
-          const SizedBox(height: 8),
-          _buildParamRow('Batas Pengaman Manual', '${device.settings.manualSafetyTimeoutMin} Menit (Auto Cut-Off)'),
-          const SizedBox(height: 8),
-          _buildParamRow('Proteksi Hujan (Rain Delay)', device.settings.rainDelayEnabled ? 'Aktif' : 'Nonaktif'),
-          const SizedBox(height: 16),
-
-          GestureDetector(
-            onTap: () => _openSettings(context, device.settings),
-            child: Container(
-              height: 48,
-              width: double.infinity,
-              decoration: AppDecorations.primaryButtonDecoration(radius: 14),
-              child: const Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.tune_rounded, color: Colors.white, size: 18),
-                  SizedBox(width: 8),
-                  FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: Text(
-                      'Buka Panel Konfigurasi Lengkap',
-                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 13),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildParamRow(String label, String value) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Expanded(
-          child: Text(
-            label,
-            style: const TextStyle(fontSize: 12, color: AppColors.textSecondary, fontWeight: FontWeight.w500),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
-        const SizedBox(width: 8),
-        Text(value, style: const TextStyle(fontSize: 12, color: AppColors.textPrimary, fontWeight: FontWeight.w700)),
-      ],
+    return ControlTabView(
+      device: device,
+      deviceProvider: deviceProvider,
+      onOpenFullSettings: () => _openSettings(context, device.settings),
     );
   }
 
@@ -922,47 +673,335 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  // Sensor Grid: Fully Responsive with mainAxisExtent
+  // Quick Pump Control with Clean IndoPrice-Style Card & Disabled State
+  Widget _buildQuickPumpControl(DeviceData device, DeviceProvider deviceProvider) {
+    final bool isPumpActive = device.pumpState.active;
+    final bool isManual = device.activeMode == 'manual';
+    final int safetyTimeoutSec = device.settings.manualSafetyTimeoutSec;
+    final String cutoffStr = safetyTimeoutSec < 60
+        ? '$safetyTimeoutSec dtk'
+        : (safetyTimeoutSec % 60 == 0
+            ? '${safetyTimeoutSec ~/ 60} mnt'
+            : '${safetyTimeoutSec ~/ 60} mnt ${safetyTimeoutSec % 60} dtk');
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: isPumpActive
+          ? BoxDecoration(
+              color: AppColors.surfaceWhite,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: const Color(0xFFBFDBFE), // Soft Ice-Blue dari IndoPrice
+                width: 1.2,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF2563EB).withValues(alpha: 0.08),
+                  offset: const Offset(0, 4),
+                  blurRadius: 14,
+                  spreadRadius: 0,
+                ),
+                ...AppDecorations.raisedShadow,
+              ],
+            )
+          : AppDecorations.raisedCard(radius: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header: Kontrol Pompa & Status Cut-off
+          Row(
+            children: [
+              // Circle status icon
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: isPumpActive ? const Color(0xFFEFF6FF) : const Color(0xFFF1F5F9),
+                  border: Border.all(
+                    color: isPumpActive ? const Color(0xFFBFDBFE) : const Color(0xFFE2E8F0),
+                    width: 1.2,
+                  ),
+                ),
+                child: Icon(
+                  isPumpActive ? Icons.water_drop_rounded : Icons.power_settings_new_rounded,
+                  color: isPumpActive ? const Color(0xFF2563EB) : const Color(0xFF64748B),
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 12),
+              // Status text & subtitle
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Text(
+                          'Kontrol Pompa',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 0.1,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Container(
+                          width: 7,
+                          height: 7,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: isPumpActive ? const Color(0xFF2563EB) : const Color(0xFF94A3B8),
+                            boxShadow: isPumpActive
+                                ? [
+                                    BoxShadow(
+                                      color: const Color(0xFF2563EB).withValues(alpha: 0.45),
+                                      blurRadius: 5,
+                                      spreadRadius: 1,
+                                    ),
+                                  ]
+                                : null,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Cut-off: $cutoffStr',
+                      style: const TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w500,
+                        color: AppColors.textSecondary,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+              // Pill Status Badge
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4.5),
+                decoration: BoxDecoration(
+                  color: isPumpActive ? const Color(0xFFEFF6FF) : const Color(0xFFF1F5F9),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: isPumpActive ? const Color(0xFFBFDBFE) : const Color(0xFFE2E8F0),
+                    width: 0.8,
+                  ),
+                ),
+                child: Text(
+                  isPumpActive ? 'AKTIF' : 'SIAGA',
+                  style: TextStyle(
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w800,
+                    color: isPumpActive ? const Color(0xFF1D4ED8) : const Color(0xFF64748B),
+                  ),
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 14),
+
+          // Action Buttons: Nyalakan Pompa & Hentikan Pompa
+          Row(
+            children: [
+              // Button 1: Nyalakan Pompa
+              Expanded(
+                flex: 6,
+                child: GestureDetector(
+                  onTap: (isManual && !isPumpActive)
+                      ? () {
+                          deviceProvider.toggleManualPump(true);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Pompa dinyalakan (Auto cut-off: $cutoffStr).'),
+                              backgroundColor: AppColors.primary,
+                              behavior: SnackBarBehavior.floating,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            ),
+                          );
+                        }
+                      : null,
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    height: 46,
+                    decoration: (isManual && !isPumpActive)
+                        ? AppDecorations.primaryButtonDecoration(radius: 14)
+                        : BoxDecoration(
+                            color: const Color(0xFFF1F5F9),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: const Color(0xFFE2E8F0), width: 1.0),
+                          ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.play_arrow_rounded,
+                          color: (isManual && !isPumpActive) ? Colors.white : const Color(0xFF94A3B8),
+                          size: 20,
+                        ),
+                        const SizedBox(width: 6),
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            'Nyalakan Pompa',
+                            style: TextStyle(
+                              color: (isManual && !isPumpActive) ? Colors.white : const Color(0xFF94A3B8),
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+
+              const SizedBox(width: 10),
+
+              // Button 2: Hentikan Pompa
+              Expanded(
+                flex: 5,
+                child: GestureDetector(
+                  onTap: (isManual && isPumpActive)
+                      ? () {
+                          deviceProvider.toggleManualPump(false);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: const Text('Perintah stop pompa manual dikirim ke sistem.'),
+                              backgroundColor: AppColors.danger,
+                              behavior: SnackBarBehavior.floating,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            ),
+                          );
+                        }
+                      : null,
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    height: 46,
+                    decoration: (isManual && isPumpActive)
+                        ? BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFFEF4444), Color(0xFFDC2626)],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            borderRadius: BorderRadius.circular(14),
+                            boxShadow: [
+                              BoxShadow(
+                                color: const Color(0xFFEF4444).withValues(alpha: 0.35),
+                                offset: const Offset(0, 4),
+                                blurRadius: 12,
+                                spreadRadius: 0,
+                              ),
+                            ],
+                          )
+                        : BoxDecoration(
+                            color: const Color(0xFFF1F5F9),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: const Color(0xFFE2E8F0), width: 1.0),
+                          ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.stop_rounded,
+                          color: (isManual && isPumpActive) ? Colors.white : const Color(0xFF94A3B8),
+                          size: 18,
+                        ),
+                        const SizedBox(width: 4),
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            'Hentikan Pompa',
+                            style: TextStyle(
+                              color: (isManual && isPumpActive) ? Colors.white : const Color(0xFF94A3B8),
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Sensor Grid: Clean, modern 2x2 grid with adaptive columns
   Widget _buildSensorGrid(DeviceData device) {
     final s = device.sensors;
     final threshold = device.settings.moistureThreshold;
+    final maxThreshold = device.settings.moistureThresholdMax;
 
-    final bool isMoistureNormal = s.soilMoisture >= threshold;
-    final String moistureBadge = isMoistureNormal ? 'Normal' : 'Kering';
-    final Color moistureBadgeBg = isMoistureNormal ? AppColors.badgeSuccessBg : AppColors.badgeDangerBg;
-    final Color moistureBadgeText = isMoistureNormal ? AppColors.badgeSuccessText : AppColors.badgeDangerText;
-
+    // 1. Suhu Udara: Normal, Tinggi, Rendah
     final bool isTempIdeal = s.temperature >= 20.0 && s.temperature <= 29.0;
-    final String tempBadge = isTempIdeal ? 'Ideal' : (s.temperature > 29.0 ? 'Tinggi' : 'Rendah');
-    final Color tempBadgeBg = isTempIdeal ? AppColors.badgeSuccessBg : AppColors.badgeWarningBg;
-    final Color tempBadgeText = isTempIdeal ? AppColors.badgeSuccessText : AppColors.badgeWarningText;
+    final String tempBadge = isTempIdeal ? 'Normal' : (s.temperature > 29.0 ? 'Tinggi' : 'Rendah');
+    final Color tempBadgeBg = isTempIdeal
+        ? AppColors.badgeSuccessBg
+        : (s.temperature > 29.0 ? AppColors.badgeWarningBg : const Color(0xFFE0F2FE));
+    final Color tempBadgeText = isTempIdeal
+        ? AppColors.badgeSuccessText
+        : (s.temperature > 29.0 ? AppColors.badgeWarningText : const Color(0xFF0369A1));
 
-    final bool isHumidNormal = s.humidity >= 60.0 && s.humidity <= 85.0;
-    final String humidBadge = isHumidNormal ? 'Normal' : (s.humidity > 85.0 ? 'Tinggi' : 'Rendah');
-    final Color humidBadgeBg = isHumidNormal ? AppColors.badgeSuccessBg : AppColors.badgeInfoBg;
-    final Color humidBadgeText = isHumidNormal ? AppColors.badgeSuccessText : AppColors.badgeInfoText;
+    // 2. Kelembapan Tanah: Kering, Normal, Basah
+    final String moistureBadge;
+    final Color moistureBadgeBg;
+    final Color moistureBadgeText;
+    if (s.soilMoisture < threshold) {
+      moistureBadge = 'Kering';
+      moistureBadgeBg = AppColors.badgeDangerBg;
+      moistureBadgeText = AppColors.badgeDangerText;
+    } else if (s.soilMoisture > maxThreshold) {
+      moistureBadge = 'Basah';
+      moistureBadgeBg = const Color(0xFFE8F0FE);
+      moistureBadgeText = const Color(0xFF1967D2);
+    } else {
+      moistureBadge = 'Normal';
+      moistureBadgeBg = AppColors.badgeSuccessBg;
+      moistureBadgeText = AppColors.badgeSuccessText;
+    }
 
-    final String rainValue = s.rain ? 'Hujan' : 'Kering';
-    final String rainBadge = s.rain ? 'Presipitasi' : 'Kering';
-    final Color rainBadgeBg = s.rain ? AppColors.badgeInfoBg : AppColors.badgeSuccessBg;
-    final Color rainBadgeText = s.rain ? AppColors.badgeInfoText : AppColors.badgeSuccessText;
-    final String rainSubtitle = s.rain ? 'Presipitasi air terdeteksi' : 'Tidak ada hujan';
+    // 3. Kelembapan Udara: Kering, Normal, Lembap
+    final bool isHumidNormal = s.humidity >= 50.0 && s.humidity <= 85.0;
+    final String humidBadge = isHumidNormal ? 'Normal' : (s.humidity > 85.0 ? 'Lembap' : 'Rendah');
+    final Color humidBadgeBg = isHumidNormal
+        ? AppColors.badgeSuccessBg
+        : (s.humidity > 85.0 ? const Color(0xFFE8F0FE) : AppColors.badgeWarningBg);
+    final Color humidBadgeText = isHumidNormal
+        ? AppColors.badgeSuccessText
+        : (s.humidity > 85.0 ? const Color(0xFF1967D2) : AppColors.badgeWarningText);
+
+    // 4. Deteksi Hujan: Kering (Tidak Hujan) / Basah (Hujan)
+    final String rainValue = s.rain ? 'Basah' : 'Kering';
+    final String rainBadge = s.rain ? 'Hujan' : 'Tidak Hujan';
+    final Color rainBadgeBg = s.rain ? const Color(0xFFE8F0FE) : AppColors.badgeSuccessBg;
+    final Color rainBadgeText = s.rain ? const Color(0xFF1967D2) : AppColors.badgeSuccessText;
 
     return LayoutBuilder(
       builder: (context, constraints) {
         final double w = constraints.maxWidth;
         int crossAxisCount = 2;
-        double mainAxisExtent = 185;
+        double mainAxisExtent = 148;
 
         if (w >= 750) {
           crossAxisCount = 4;
-          mainAxisExtent = 180;
+          mainAxisExtent = 146;
         } else if (w >= 520) {
           crossAxisCount = 3;
-          mainAxisExtent = 180;
+          mainAxisExtent = 146;
         } else if (w < 350) {
           crossAxisCount = 2;
-          mainAxisExtent = 195;
+          mainAxisExtent = 154;
         }
 
         return GridView(
@@ -976,50 +1015,44 @@ class _DashboardScreenState extends State<DashboardScreen> {
           physics: const NeverScrollableScrollPhysics(),
           children: [
             SensorCard(
-              icon: Icons.water_drop_outlined,
+              icon: Icons.thermostat_rounded,
+              iconColor: const Color(0xFFF97316),
+              iconBgColor: const Color(0xFFFFF4EC),
+              title: 'Suhu Udara',
+              value: '${s.temperature.toStringAsFixed(1)} °C',
+              badgeText: tempBadge,
+              badgeBgColor: tempBadgeBg,
+              badgeTextColor: tempBadgeText,
+            ),
+            SensorCard(
+              icon: Icons.water_drop_rounded,
+              iconColor: const Color(0xFF2563EB),
+              iconBgColor: const Color(0xFFEFF6FF),
               title: 'Kelembapan Tanah',
               value: '${s.soilMoisture.toStringAsFixed(0)}%',
               badgeText: moistureBadge,
               badgeBgColor: moistureBadgeBg,
               badgeTextColor: moistureBadgeText,
-              subtitle: 'Target: $threshold% - ${device.settings.moistureThresholdMax}%',
-              progressPercent: s.soilMoisture / 100.0,
-              progressColor: isMoistureNormal ? AppColors.primary : AppColors.danger,
-            ),
-            SensorCard(
-              icon: Icons.thermostat_outlined,
-              title: 'Suhu Udara',
-              value: '${s.temperature.toStringAsFixed(1)}°C',
-              badgeText: tempBadge,
-              badgeBgColor: tempBadgeBg,
-              badgeTextColor: tempBadgeText,
-              subtitle: 'Rentang Ideal: 20-28°C',
-              progressPercent: (s.temperature / 45.0).clamp(0.0, 1.0),
-              progressColor: AppColors.primaryLight,
             ),
             SensorCard(
               icon: Icons.cloud_outlined,
+              iconColor: const Color(0xFF0284C7),
+              iconBgColor: const Color(0xFFF0F9FF),
               title: 'Kelembapan Udara',
               value: '${s.humidity.toStringAsFixed(0)}%',
               badgeText: humidBadge,
               badgeBgColor: humidBadgeBg,
               badgeTextColor: humidBadgeText,
-              subtitle: 'Rentang Ideal: 60-85%',
-              progressPercent: s.humidity / 100.0,
-              progressColor: AppColors.accent,
             ),
             SensorCard(
-              icon: s.rain ? Icons.grain_rounded : Icons.wb_sunny_outlined,
+              icon: s.rain ? Icons.grain_rounded : Icons.wb_sunny_rounded,
+              iconColor: s.rain ? const Color(0xFF4F46E5) : const Color(0xFFF59E0B),
+              iconBgColor: s.rain ? const Color(0xFFEEF2FF) : const Color(0xFFFFFBEB),
               title: 'Deteksi Hujan',
               value: rainValue,
               badgeText: rainBadge,
               badgeBgColor: rainBadgeBg,
               badgeTextColor: rainBadgeText,
-              subtitle: rainSubtitle,
-              customTrailing: Text(
-                s.rain ? 'Deteksi Air Hujan' : 'Kondisi Kering',
-                style: const TextStyle(fontSize: 11, color: AppColors.textLight, fontWeight: FontWeight.w600),
-              ),
             ),
           ],
         );
@@ -1050,7 +1083,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               _buildNavItem(0, Icons.grid_view_rounded, 'Overview', isCompact),
               _buildNavItem(1, Icons.water_rounded, 'Irigasi', isCompact),
               _buildNavItem(2, Icons.analytics_outlined, 'Analitik', isCompact),
-              _buildNavItem(3, Icons.tune_rounded, 'Jadwal', isCompact),
+              _buildNavItem(3, Icons.tune_rounded, 'Kontrol', isCompact),
             ],
           ),
         ),

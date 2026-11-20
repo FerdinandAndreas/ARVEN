@@ -96,10 +96,11 @@ class PumpState {
 }
 
 class DeviceSchedule {
-  final int frequency; // 2 atau 3 kali
-  final String time1; // misal '07:00'
-  final String time2; // misal '16:30'
-  final String time3; // misal '12:00'
+  final int frequency; // 2, 3, atau 4 kali
+  final String time1; // misal '07:00' (Pagi)
+  final String time2; // misal '12:00' (Siang) atau '16:30' (Sore)
+  final String time3; // misal '16:30' (Sore)
+  final String time4; // misal '20:00' (Malam)
   final int durationSec; // lama pompa per sesi
 
   DeviceSchedule({
@@ -107,6 +108,7 @@ class DeviceSchedule {
     this.time1 = '07:00',
     this.time2 = '16:30',
     this.time3 = '12:00',
+    this.time4 = '20:00',
     this.durationSec = 20,
   });
 
@@ -117,6 +119,7 @@ class DeviceSchedule {
       time1: map['time_1']?.toString() ?? '07:00',
       time2: map['time_2']?.toString() ?? '16:30',
       time3: map['time_3']?.toString() ?? '12:00',
+      time4: map['time_4']?.toString() ?? '20:00',
       durationSec: (map['duration_sec'] as num?)?.toInt() ?? 20,
     );
   }
@@ -127,6 +130,7 @@ class DeviceSchedule {
       'time_1': time1,
       'time_2': time2,
       'time_3': time3,
+      'time_4': time4,
       'duration_sec': durationSec,
     };
   }
@@ -136,10 +140,12 @@ class DeviceSettings {
   final int moistureThreshold; // % kelembapan minimum pemicu pompa aktif (<= min)
   final int moistureThresholdMax; // % kelembapan maksimum pompa otomatis mati (>= max)
   final int wateringDurationSec; // durasi batas cadangan siram otomatis
-  final int soakIntervalMin; // jeda anti-chattering
+  final int soakIntervalMin; // jeda anti-chattering (menit, legacy)
+  final int soakIntervalSec; // jeda anti-chattering (detik)
   final double maxTemperatureLimit; // batas suhu aman DHT22
   final bool rainDelayEnabled;
-  final int manualSafetyTimeoutMin; // batas waktu keamanan cut-off manual jika lupa (menit)
+  final int manualSafetyTimeoutMin; // batas waktu keamanan cut-off manual jika lupa (menit, legacy)
+  final int manualSafetyTimeoutSec; // batas waktu keamanan cut-off manual (detik)
   final DeviceSchedule schedule;
 
   DeviceSettings({
@@ -147,22 +153,34 @@ class DeviceSettings {
     this.moistureThresholdMax = 85,
     this.wateringDurationSec = 15,
     this.soakIntervalMin = 20,
+    int? soakIntervalSec,
     this.maxTemperatureLimit = 35.0,
     this.rainDelayEnabled = true,
     this.manualSafetyTimeoutMin = 5,
+    int? manualSafetyTimeoutSec,
     DeviceSchedule? schedule,
-  }) : schedule = schedule ?? DeviceSchedule();
+  })  : soakIntervalSec = soakIntervalSec ?? (soakIntervalMin * 60),
+        manualSafetyTimeoutSec = manualSafetyTimeoutSec ?? (manualSafetyTimeoutMin * 60),
+        schedule = schedule ?? DeviceSchedule();
 
   factory DeviceSettings.fromMap(Map<dynamic, dynamic>? map) {
     if (map == null) return DeviceSettings();
+    final sMin = (map['soak_interval_min'] as num?)?.toInt() ?? 20;
+    final sSec = (map['soak_interval_sec'] as num?)?.toInt() ?? (sMin * 60);
+
+    final mMin = (map['manual_safety_timeout_min'] as num?)?.toInt() ?? 5;
+    final mSec = (map['manual_safety_timeout_sec'] as num?)?.toInt() ?? (mMin * 60);
+
     return DeviceSettings(
       moistureThreshold: (map['moisture_threshold'] as num?)?.toInt() ?? 40,
       moistureThresholdMax: (map['moisture_threshold_max'] as num?)?.toInt() ?? 85,
       wateringDurationSec: (map['watering_duration_sec'] as num?)?.toInt() ?? 15,
-      soakIntervalMin: (map['soak_interval_min'] as num?)?.toInt() ?? 20,
+      soakIntervalMin: (sSec / 60).ceil(),
+      soakIntervalSec: sSec,
       maxTemperatureLimit: (map['max_temperature_limit'] as num?)?.toDouble() ?? 35.0,
       rainDelayEnabled: map['rain_delay_enabled'] != false,
-      manualSafetyTimeoutMin: (map['manual_safety_timeout_min'] as num?)?.toInt() ?? 5,
+      manualSafetyTimeoutMin: (mSec / 60).ceil(),
+      manualSafetyTimeoutSec: mSec,
       schedule: DeviceSchedule.fromMap(map['schedule'] as Map<dynamic, dynamic>?),
     );
   }
@@ -172,10 +190,12 @@ class DeviceSettings {
       'moisture_threshold': moistureThreshold,
       'moisture_threshold_max': moistureThresholdMax,
       'watering_duration_sec': wateringDurationSec,
-      'soak_interval_min': soakIntervalMin,
+      'soak_interval_min': (soakIntervalSec / 60).ceil(),
+      'soak_interval_sec': soakIntervalSec,
       'max_temperature_limit': maxTemperatureLimit,
       'rain_delay_enabled': rainDelayEnabled,
-      'manual_safety_timeout_min': manualSafetyTimeoutMin,
+      'manual_safety_timeout_min': (manualSafetyTimeoutSec / 60).ceil(),
+      'manual_safety_timeout_sec': manualSafetyTimeoutSec,
       'schedule': schedule.toMap(),
     };
   }

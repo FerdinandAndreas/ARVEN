@@ -15,21 +15,22 @@ class SettingsBottomSheet extends StatefulWidget {
 }
 
 class _SettingsBottomSheetState extends State<SettingsBottomSheet> {
-  // Mode Otomatis: Batas Minimum (Menyala) & Batas Maksimum (Mati)
+  // Mode Otomatis
   late double _moistureMin;
   late double _moistureMax;
-  late double _soakInterval;
+  late double _soakIntervalSec;
   late bool _rainDelay;
 
-  // Mode Terjadwal
-  late int _scheduleFrequency;
-  late TimeOfDay _time1;
-  late TimeOfDay _time2;
-  late TimeOfDay _time3;
-  late double _scheduledDurationSec; // dalam detik (bisa menit-menit)
+  // Mode Terjadwal (Pagi, Siang, Sore, Malam)
+  late int _scheduleFrequency; // 2, 3, atau 4
+  late TimeOfDay _timePagi;
+  late TimeOfDay _timeSiang;
+  late TimeOfDay _timeSore;
+  late TimeOfDay _timeMalam;
+  late double _scheduledDurationSec;
 
-  // Mode Manual: Batas Waktu Pengaman (Auto Cut-off jika lupa)
-  late double _manualSafetyTimeoutMin;
+  // Mode Manual
+  late double _manualSafetyTimeoutSec;
 
   @override
   void initState() {
@@ -38,15 +39,32 @@ class _SettingsBottomSheetState extends State<SettingsBottomSheet> {
 
     _moistureMin = s.moistureThreshold.toDouble().clamp(10.0, 70.0);
     _moistureMax = s.moistureThresholdMax.toDouble().clamp(_moistureMin + 5.0, 95.0);
-    _soakInterval = s.soakIntervalMin.toDouble();
+    _soakIntervalSec = s.soakIntervalSec.toDouble().clamp(5.0, 7200.0);
     _rainDelay = s.rainDelayEnabled;
-    _manualSafetyTimeoutMin = s.manualSafetyTimeoutMin.toDouble().clamp(1.0, 60.0);
+    _manualSafetyTimeoutSec = s.manualSafetyTimeoutSec.toDouble().clamp(5.0, 3600.0);
 
     final sc = s.schedule;
-    _scheduleFrequency = sc.frequency;
-    _time1 = _parseTime(sc.time1, const TimeOfDay(hour: 7, minute: 0));
-    _time2 = _parseTime(sc.time2, const TimeOfDay(hour: 16, minute: 30));
-    _time3 = _parseTime(sc.time3, const TimeOfDay(hour: 12, minute: 0));
+    _scheduleFrequency = sc.frequency.clamp(2, 4);
+
+    _timePagi = _parseTime(sc.time1, const TimeOfDay(hour: 7, minute: 0));
+
+    // Handle parsing for Siang, Sore, and Malam
+    if (sc.frequency == 2) {
+      _timeSore = _parseTime(sc.time2, const TimeOfDay(hour: 16, minute: 30));
+      _timeSiang = _parseTime(sc.time3, const TimeOfDay(hour: 12, minute: 0));
+    } else {
+      final t2 = _parseTime(sc.time2, const TimeOfDay(hour: 12, minute: 0));
+      final t3 = _parseTime(sc.time3, const TimeOfDay(hour: 16, minute: 30));
+      if (t2.hour > t3.hour) {
+        _timeSiang = t3;
+        _timeSore = t2;
+      } else {
+        _timeSiang = t2;
+        _timeSore = t3;
+      }
+    }
+
+    _timeMalam = _parseTime(sc.time4, const TimeOfDay(hour: 20, minute: 0));
     _scheduledDurationSec = sc.durationSec.toDouble().clamp(5.0, 3600.0);
   }
 
@@ -78,12 +96,14 @@ class _SettingsBottomSheetState extends State<SettingsBottomSheet> {
     return '$minutes Menit $remainingSeconds Detik';
   }
 
-  Future<void> _pickTime(int scheduleIndex) async {
-    final TimeOfDay initial = scheduleIndex == 1
-        ? _time1
-        : scheduleIndex == 2
-            ? _time2
-            : _time3;
+  Future<void> _pickTime(String sessionType) async {
+    final TimeOfDay initial = sessionType == 'pagi'
+        ? _timePagi
+        : sessionType == 'siang'
+            ? _timeSiang
+            : sessionType == 'sore'
+                ? _timeSore
+                : _timeMalam;
 
     final picked = await showTimePicker(
       context: context,
@@ -105,14 +125,15 @@ class _SettingsBottomSheetState extends State<SettingsBottomSheet> {
 
     if (picked != null) {
       setState(() {
-        if (scheduleIndex == 1) _time1 = picked;
-        if (scheduleIndex == 2) _time2 = picked;
-        if (scheduleIndex == 3) _time3 = picked;
+        if (sessionType == 'pagi') _timePagi = picked;
+        if (sessionType == 'siang') _timeSiang = picked;
+        if (sessionType == 'sore') _timeSore = picked;
+        if (sessionType == 'malam') _timeMalam = picked;
       });
     }
   }
 
-  // Dialog untuk mengetik langsung durasi dalam Menit & Detik
+  // 1. Dialog Ketik Durasi Penyiraman Terjadwal (Menit & Detik)
   void _showCustomDurationDialog() {
     final minutesController = TextEditingController(
       text: (_scheduledDurationSec.round() ~/ 60).toString(),
@@ -127,20 +148,24 @@ class _SettingsBottomSheetState extends State<SettingsBottomSheet> {
         return AlertDialog(
           backgroundColor: AppColors.surfaceWhite,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
-          title: const Text(
-            'Ketik Durasi Penyiraman',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w800,
-              color: AppColors.textPrimary,
-            ),
+          title: const Row(
+            children: [
+              Icon(Icons.timer_outlined, color: AppColors.primary, size: 22),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Ketik Durasi Penyiraman',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
+                ),
+              ),
+            ],
           ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                'Tentukan lama pompa menyala pada sesi terjadwal:',
+                'Tentukan berapa lama pompa menyala pada setiap sesi terjadwal:',
                 style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
               ),
               const SizedBox(height: 16),
@@ -150,10 +175,7 @@ class _SettingsBottomSheetState extends State<SettingsBottomSheet> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
-                          'Menit',
-                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textSecondary),
-                        ),
+                        const Text('Menit', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
                         const SizedBox(height: 6),
                         TextField(
                           controller: minutesController,
@@ -175,10 +197,7 @@ class _SettingsBottomSheetState extends State<SettingsBottomSheet> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
-                          'Detik',
-                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textSecondary),
-                        ),
+                        const Text('Detik', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
                         const SizedBox(height: 6),
                         TextField(
                           controller: secondsController,
@@ -239,20 +258,439 @@ class _SettingsBottomSheetState extends State<SettingsBottomSheet> {
     );
   }
 
+  // 2. Dialog Ketik Jeda Peresapan Air (Menit & Detik)
+  void _showCustomSoakIntervalDialog() {
+    final minutesController = TextEditingController(
+      text: (_soakIntervalSec.round() ~/ 60).toString(),
+    );
+    final secondsController = TextEditingController(
+      text: (_soakIntervalSec.round() % 60).toString(),
+    );
+
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          backgroundColor: AppColors.surfaceWhite,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+          title: const Row(
+            children: [
+              Icon(Icons.hourglass_top_rounded, color: AppColors.primary, size: 22),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Ketik Jeda Peresapan Air',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
+                ),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Waktu tunggu peresapan air ke akar sebelum evaluasi kelembapan sensor:',
+                style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('Menit', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
+                        const SizedBox(height: 6),
+                        TextField(
+                          controller: minutesController,
+                          keyboardType: TextInputType.number,
+                          decoration: InputDecoration(
+                            hintText: '0',
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: const BorderSide(color: AppColors.cardBorder),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('Detik', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
+                        const SizedBox(height: 6),
+                        TextField(
+                          controller: secondsController,
+                          keyboardType: TextInputType.number,
+                          decoration: InputDecoration(
+                            hintText: '0',
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: const BorderSide(color: AppColors.cardBorder),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              const Text('Preset Cepat:', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  _buildQuickPresetChip('15 Detik', 0, 15, minutesController, secondsController),
+                  _buildQuickPresetChip('30 Detik', 0, 30, minutesController, secondsController),
+                  _buildQuickPresetChip('1 Menit', 1, 0, minutesController, secondsController),
+                  _buildQuickPresetChip('2 Menit', 2, 0, minutesController, secondsController),
+                  _buildQuickPresetChip('5 Menit', 5, 0, minutesController, secondsController),
+                  _buildQuickPresetChip('10 Menit', 10, 0, minutesController, secondsController),
+                  _buildQuickPresetChip('15 Menit', 15, 0, minutesController, secondsController),
+                  _buildQuickPresetChip('30 Menit', 30, 0, minutesController, secondsController),
+                ],
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Batal', style: TextStyle(color: AppColors.textSecondary)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              onPressed: () {
+                final int m = int.tryParse(minutesController.text.trim()) ?? 0;
+                final int s = int.tryParse(secondsController.text.trim()) ?? 0;
+                final int totalSec = (m * 60) + s;
+
+                if (totalSec >= 5 && totalSec <= 7200) {
+                  setState(() {
+                    _soakIntervalSec = totalSec.toDouble();
+                  });
+                  Navigator.pop(ctx);
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: const Text('Jeda peresapan minimal 5 detik dan maksimal 120 menit.'),
+                      backgroundColor: AppColors.danger,
+                      behavior: SnackBarBehavior.floating,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                  );
+                }
+              },
+              child: const Text('Terapkan'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  // 3. Dialog Ketik Batas Pengaman Auto Cut-Off (Menit & Detik)
+  void _showCustomSafetyTimeoutDialog() {
+    final minutesController = TextEditingController(
+      text: (_manualSafetyTimeoutSec.round() ~/ 60).toString(),
+    );
+    final secondsController = TextEditingController(
+      text: (_manualSafetyTimeoutSec.round() % 60).toString(),
+    );
+
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          backgroundColor: AppColors.surfaceWhite,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+          title: const Row(
+            children: [
+              Icon(Icons.shield_outlined, color: AppColors.warning, size: 22),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Ketik Batas Pengaman Cut-Off',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
+                ),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Batas waktu pompa manual menyala sebelum otomatis dimatikan sistem jika lupa:',
+                style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('Menit', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
+                        const SizedBox(height: 6),
+                        TextField(
+                          controller: minutesController,
+                          keyboardType: TextInputType.number,
+                          decoration: InputDecoration(
+                            hintText: '0',
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: const BorderSide(color: AppColors.cardBorder),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('Detik', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
+                        const SizedBox(height: 6),
+                        TextField(
+                          controller: secondsController,
+                          keyboardType: TextInputType.number,
+                          decoration: InputDecoration(
+                            hintText: '0',
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: const BorderSide(color: AppColors.cardBorder),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              const Text('Preset Cepat:', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  _buildQuickPresetChip('30 Detik', 0, 30, minutesController, secondsController),
+                  _buildQuickPresetChip('1 Menit', 1, 0, minutesController, secondsController),
+                  _buildQuickPresetChip('2 Menit', 2, 0, minutesController, secondsController),
+                  _buildQuickPresetChip('5 Menit', 5, 0, minutesController, secondsController),
+                  _buildQuickPresetChip('10 Menit', 10, 0, minutesController, secondsController),
+                  _buildQuickPresetChip('15 Menit', 15, 0, minutesController, secondsController),
+                  _buildQuickPresetChip('30 Menit', 30, 0, minutesController, secondsController),
+                ],
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Batal', style: TextStyle(color: AppColors.textSecondary)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.warning,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              onPressed: () {
+                final int m = int.tryParse(minutesController.text.trim()) ?? 0;
+                final int s = int.tryParse(secondsController.text.trim()) ?? 0;
+                final int totalSec = (m * 60) + s;
+
+                if (totalSec >= 5 && totalSec <= 3600) {
+                  setState(() {
+                    _manualSafetyTimeoutSec = totalSec.toDouble();
+                  });
+                  Navigator.pop(ctx);
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: const Text('Batas cut-off minimal 5 detik dan maksimal 60 menit.'),
+                      backgroundColor: AppColors.danger,
+                      behavior: SnackBarBehavior.floating,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                  );
+                }
+              },
+              child: const Text('Terapkan'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  // 4. Dialog Ketik Rentang Target Kelembapan (%)
+  void _showCustomMoistureRangeDialog() {
+    final minController = TextEditingController(text: _moistureMin.round().toString());
+    final maxController = TextEditingController(text: _moistureMax.round().toString());
+
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          backgroundColor: AppColors.surfaceWhite,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+          title: const Row(
+            children: [
+              Icon(Icons.water_drop_rounded, color: AppColors.primary, size: 22),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Ketik Rentang Kelembapan',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
+                ),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Tentukan batas pemicu pompa ON dan batas target pompa OFF dalam %:',
+                style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: minController,
+                      keyboardType: TextInputType.number,
+                      decoration: InputDecoration(
+                        labelText: 'Min (Pompa ON)',
+                        suffixText: '%',
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(color: AppColors.cardBorder),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: TextField(
+                      controller: maxController,
+                      keyboardType: TextInputType.number,
+                      decoration: InputDecoration(
+                        labelText: 'Max (Pompa OFF)',
+                        suffixText: '%',
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(color: AppColors.cardBorder),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Batal', style: TextStyle(color: AppColors.textSecondary)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              onPressed: () {
+                final int mn = int.tryParse(minController.text.trim()) ?? 0;
+                final int mx = int.tryParse(maxController.text.trim()) ?? 0;
+
+                if (mn >= 10 && mx <= 95 && mx >= mn + 5) {
+                  setState(() {
+                    _moistureMin = mn.toDouble();
+                    _moistureMax = mx.toDouble();
+                  });
+                  Navigator.pop(ctx);
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: const Text('Batas Max harus lebih besar minimal 5% dari Min (rentang 10% - 95%).'),
+                      backgroundColor: AppColors.danger,
+                      behavior: SnackBarBehavior.floating,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                  );
+                }
+              },
+              child: const Text('Terapkan'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildQuickPresetChip(String label, int minutes, int seconds, TextEditingController minCtrl, TextEditingController secCtrl) {
+    return InkWell(
+      onTap: () {
+        minCtrl.text = minutes.toString();
+        secCtrl.text = seconds.toString();
+      },
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: AppColors.badgeInfoBg,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: AppColors.cardBorder),
+        ),
+        child: Text(label, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.primary)),
+      ),
+    );
+  }
+
   void _saveSettings() {
+    final String t1 = _formatTime(_timePagi);
+    final String t2 = _scheduleFrequency == 2 ? _formatTime(_timeSore) : _formatTime(_timeSiang);
+    final String t3 = _scheduleFrequency == 2 ? _formatTime(_timeSiang) : _formatTime(_timeSore);
+    final String t4 = _formatTime(_timeMalam);
+
     final newSettings = DeviceSettings(
       moistureThreshold: _moistureMin.round(),
       moistureThresholdMax: _moistureMax.round(),
       wateringDurationSec: widget.currentSettings.wateringDurationSec,
-      soakIntervalMin: _soakInterval.round(),
+      soakIntervalMin: (_soakIntervalSec / 60).ceil(),
+      soakIntervalSec: _soakIntervalSec.round(),
       maxTemperatureLimit: widget.currentSettings.maxTemperatureLimit,
       rainDelayEnabled: _rainDelay,
-      manualSafetyTimeoutMin: _manualSafetyTimeoutMin.round(),
+      manualSafetyTimeoutMin: (_manualSafetyTimeoutSec / 60).ceil(),
+      manualSafetyTimeoutSec: _manualSafetyTimeoutSec.round(),
       schedule: DeviceSchedule(
         frequency: _scheduleFrequency,
-        time1: _formatTime(_time1),
-        time2: _formatTime(_time2),
-        time3: _formatTime(_time3),
+        time1: t1,
+        time2: t2,
+        time3: t3,
+        time4: t4,
         durationSec: _scheduledDurationSec.round(),
       ),
     );
@@ -379,15 +817,28 @@ class _SettingsBottomSheetState extends State<SettingsBottomSheet> {
                                 'Rentang Target Kelembapan',
                                 style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
                               ),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: AppColors.badgeInfoBg,
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Text(
-                                  '${_moistureMin.round()}%  -  ${_moistureMax.round()}%',
-                                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: AppColors.primary),
+                              // Clickable Badge with Edit Icon
+                              GestureDetector(
+                                onTap: _showCustomMoistureRangeDialog,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.badgeInfoBg,
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
+                                    boxShadow: AppDecorations.softRaisedShadow,
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        '${_moistureMin.round()}%  -  ${_moistureMax.round()}%',
+                                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: AppColors.primary),
+                                      ),
+                                      const SizedBox(width: 4),
+                                      const Icon(Icons.edit_note_rounded, color: AppColors.primary, size: 16),
+                                    ],
+                                  ),
                                 ),
                               ),
                             ],
@@ -476,19 +927,85 @@ class _SettingsBottomSheetState extends State<SettingsBottomSheet> {
                     ),
                     const SizedBox(height: 12),
 
-                    // Jeda Peresapan Air (Soak Interval)
-                    _buildParameterCard(
-                      title: 'Jeda Peresapan Air (Soak Time)',
-                      valueString: '${_soakInterval.round()} Menit',
-                      description: 'Waktu tunggu air meresap ke perakaran sebelum sensor dievaluasi kembali, mencegah pompa menyala mati berulang.',
-                      slider: Slider(
-                        value: _soakInterval,
-                        min: 5,
-                        max: 60,
-                        divisions: 11,
-                        activeColor: AppColors.primary,
-                        inactiveColor: AppColors.secondary.withValues(alpha: 0.4),
-                        onChanged: (val) => setState(() => _soakInterval = val),
+                    // Jeda Peresapan Air (Soak Interval) Card with Clickable Badge & Dialog
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: AppDecorations.raisedCard(radius: 18),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Expanded(
+                                child: Text(
+                                  'Jeda Peresapan Air (Soak Time)',
+                                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              GestureDetector(
+                                onTap: _showCustomSoakIntervalDialog,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.primary,
+                                    borderRadius: BorderRadius.circular(8),
+                                    boxShadow: AppDecorations.softRaisedShadow,
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        _formatDuration(_soakIntervalSec.round()),
+                                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Colors.white),
+                                      ),
+                                      const SizedBox(width: 4),
+                                      const Icon(Icons.edit_note_rounded, color: Colors.white, size: 16),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          const Text(
+                            'Waktu tunggu air meresap ke perakaran sebelum sensor dievaluasi kembali, mencegah pompa menyala mati berulang.',
+                            style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                          ),
+                          const SizedBox(height: 10),
+
+                          // Preset Chips Cepat Detik & Menit
+                          SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            physics: const BouncingScrollPhysics(),
+                            child: Row(
+                              children: [
+                                _buildPresetChip('15 Detik', 15, _soakIntervalSec.round(), (v) => setState(() => _soakIntervalSec = v.toDouble())),
+                                _buildPresetChip('30 Detik', 30, _soakIntervalSec.round(), (v) => setState(() => _soakIntervalSec = v.toDouble())),
+                                _buildPresetChip('1 Menit', 60, _soakIntervalSec.round(), (v) => setState(() => _soakIntervalSec = v.toDouble())),
+                                _buildPresetChip('2 Menit', 120, _soakIntervalSec.round(), (v) => setState(() => _soakIntervalSec = v.toDouble())),
+                                _buildPresetChip('5 Menit', 300, _soakIntervalSec.round(), (v) => setState(() => _soakIntervalSec = v.toDouble())),
+                                _buildPresetChip('10 Menit', 600, _soakIntervalSec.round(), (v) => setState(() => _soakIntervalSec = v.toDouble())),
+                                _buildPresetChip('15 Menit', 900, _soakIntervalSec.round(), (v) => setState(() => _soakIntervalSec = v.toDouble())),
+                                _buildPresetChip('30 Menit', 1800, _soakIntervalSec.round(), (v) => setState(() => _soakIntervalSec = v.toDouble())),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+
+                          Slider(
+                            value: _soakIntervalSec.clamp(5.0, 3600.0),
+                            min: 5,
+                            max: 3600,
+                            divisions: 71,
+                            activeColor: AppColors.primary,
+                            inactiveColor: AppColors.secondary.withValues(alpha: 0.4),
+                            onChanged: (val) => setState(() => _soakIntervalSec = val),
+                          ),
+                        ],
                       ),
                     ),
                     const SizedBox(height: 22),
@@ -496,7 +1013,7 @@ class _SettingsBottomSheetState extends State<SettingsBottomSheet> {
                     // ==========================================
                     // 2. PARAMETER MODE TERJADWAL
                     // ==========================================
-                    _buildSectionHeader('Mode Terjadwal (Waktu & Durasi Menit)', Icons.alarm_rounded),
+                    _buildSectionHeader('Mode Terjadwal (Waktu & Durasi Menit/Detik)', Icons.alarm_rounded),
                     const SizedBox(height: 10),
 
                     Container(
@@ -505,26 +1022,73 @@ class _SettingsBottomSheetState extends State<SettingsBottomSheet> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text(
-                            'Frekuensi Sesi Penyiraman',
-                            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text(
+                                'Frekuensi Sesi Penyiraman',
+                                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                              ),
+                              if (_scheduleFrequency < 4)
+                                InkWell(
+                                  onTap: () {
+                                    setState(() {
+                                      _scheduleFrequency++;
+                                    });
+                                  },
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                    decoration: BoxDecoration(
+                                      color: AppColors.badgeInfoBg,
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
+                                      boxShadow: AppDecorations.softRaisedShadow,
+                                    ),
+                                    child: const Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(Icons.add_rounded, size: 16, color: AppColors.primary),
+                                        SizedBox(width: 2),
+                                        Text(
+                                          'Tambah Sesi',
+                                          style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: AppColors.primary),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                            ],
                           ),
                           const SizedBox(height: 10),
                           Row(
                             children: [
-                              Expanded(child: _buildFrequencyChip('2 Kali Sehari', 2)),
-                              const SizedBox(width: 10),
-                              Expanded(child: _buildFrequencyChip('3 Kali Sehari', 3)),
+                              Expanded(child: _buildFrequencyChip('2 Kali', 2)),
+                              const SizedBox(width: 8),
+                              Expanded(child: _buildFrequencyChip('3 Kali', 3)),
+                              const SizedBox(width: 8),
+                              Expanded(child: _buildFrequencyChip('4 Kali', 4)),
                             ],
                           ),
                           const SizedBox(height: 16),
 
-                          _buildTimePickerTile('Sesi Pagi', _formatTime(_time1), () => _pickTime(1)),
-                          const SizedBox(height: 10),
-                          _buildTimePickerTile('Sesi Sore', _formatTime(_time2), () => _pickTime(2)),
-                          if (_scheduleFrequency == 3) ...[
+                          // 1. Sesi Pagi
+                          _buildTimePickerTile('Sesi Pagi', _formatTime(_timePagi), Icons.wb_sunny_rounded, () => _pickTime('pagi')),
+
+                          // 2. Sesi Siang (Ditampilkan jika frekuensi >= 3)
+                          if (_scheduleFrequency >= 3) ...[
                             const SizedBox(height: 10),
-                            _buildTimePickerTile('Sesi Siang', _formatTime(_time3), () => _pickTime(3)),
+                            _buildTimePickerTile('Sesi Siang', _formatTime(_timeSiang), Icons.light_mode_rounded, () => _pickTime('siang')),
+                          ],
+
+                          // 3. Sesi Sore (Selalu ditampilkan)
+                          const SizedBox(height: 10),
+                          _buildTimePickerTile('Sesi Sore', _formatTime(_timeSore), Icons.wb_twilight_rounded, () => _pickTime('sore')),
+
+                          // 4. Sesi Malam (Ditampilkan jika frekuensi >= 4)
+                          if (_scheduleFrequency >= 4) ...[
+                            const SizedBox(height: 10),
+                            _buildTimePickerTile('Sesi Malam', _formatTime(_timeMalam), Icons.nightlight_round, () => _pickTime('malam')),
                           ],
 
                           const SizedBox(height: 18),
@@ -578,12 +1142,12 @@ class _SettingsBottomSheetState extends State<SettingsBottomSheet> {
                             physics: const BouncingScrollPhysics(),
                             child: Row(
                               children: [
-                                _buildDurationPresetChip('30 Detik', 30),
-                                _buildDurationPresetChip('1 Menit', 60),
-                                _buildDurationPresetChip('2 Menit', 120),
-                                _buildDurationPresetChip('5 Menit', 300),
-                                _buildDurationPresetChip('10 Menit', 600),
-                                _buildDurationPresetChip('15 Menit', 900),
+                                _buildPresetChip('30 Detik', 30, _scheduledDurationSec.round(), (v) => setState(() => _scheduledDurationSec = v.toDouble())),
+                                _buildPresetChip('1 Menit', 60, _scheduledDurationSec.round(), (v) => setState(() => _scheduledDurationSec = v.toDouble())),
+                                _buildPresetChip('2 Menit', 120, _scheduledDurationSec.round(), (v) => setState(() => _scheduledDurationSec = v.toDouble())),
+                                _buildPresetChip('5 Menit', 300, _scheduledDurationSec.round(), (v) => setState(() => _scheduledDurationSec = v.toDouble())),
+                                _buildPresetChip('10 Menit', 600, _scheduledDurationSec.round(), (v) => setState(() => _scheduledDurationSec = v.toDouble())),
+                                _buildPresetChip('15 Menit', 900, _scheduledDurationSec.round(), (v) => setState(() => _scheduledDurationSec = v.toDouble())),
                               ],
                             ),
                           ),
@@ -631,50 +1195,63 @@ class _SettingsBottomSheetState extends State<SettingsBottomSheet> {
                                   overflow: TextOverflow.ellipsis,
                                 ),
                               ),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: AppColors.badgeWarningBg,
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Text(
-                                  '${_manualSafetyTimeoutMin.round()} Menit',
-                                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: AppColors.badgeWarningText),
+                              GestureDetector(
+                                onTap: _showCustomSafetyTimeoutDialog,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.warning,
+                                    borderRadius: BorderRadius.circular(8),
+                                    boxShadow: AppDecorations.softRaisedShadow,
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        _formatDuration(_manualSafetyTimeoutSec.round()),
+                                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Colors.white),
+                                      ),
+                                      const SizedBox(width: 4),
+                                      const Icon(Icons.edit_note_rounded, color: Colors.white, size: 16),
+                                    ],
+                                  ),
                                 ),
                               ),
                             ],
                           ),
                           const SizedBox(height: 6),
                           const Text(
-                            'Dalam mode manual, Anda bebas menyalakan dan mematikan pompa kapan saja. Namun jika pompa dibiarkan menyala, sistem akan otomatis mematikannya setelah batas menit ini untuk mengantisipasi jika Anda lupa.',
+                            'Dalam mode manual, Anda bebas menyalakan dan mematikan pompa kapan saja. Namun jika pompa dibiarkan menyala, sistem akan otomatis mematikannya setelah batas waktu ini untuk mengantisipasi jika Anda lupa.',
                             style: TextStyle(fontSize: 12, color: AppColors.textSecondary, height: 1.35),
                           ),
                           const SizedBox(height: 12),
 
-                          // Preset Chips Menit Pengaman
-                          Row(
-                            children: [
-                              _buildSafetyPresetChip(2),
-                              const SizedBox(width: 6),
-                              _buildSafetyPresetChip(5),
-                              const SizedBox(width: 6),
-                              _buildSafetyPresetChip(10),
-                              const SizedBox(width: 6),
-                              _buildSafetyPresetChip(15),
-                              const SizedBox(width: 6),
-                              _buildSafetyPresetChip(30),
-                            ],
+                          // Preset Chips Menit & Detik Pengaman
+                          SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            physics: const BouncingScrollPhysics(),
+                            child: Row(
+                              children: [
+                                _buildPresetChip('30 Detik', 30, _manualSafetyTimeoutSec.round(), (v) => setState(() => _manualSafetyTimeoutSec = v.toDouble())),
+                                _buildPresetChip('1 Menit', 60, _manualSafetyTimeoutSec.round(), (v) => setState(() => _manualSafetyTimeoutSec = v.toDouble())),
+                                _buildPresetChip('2 Menit', 120, _manualSafetyTimeoutSec.round(), (v) => setState(() => _manualSafetyTimeoutSec = v.toDouble())),
+                                _buildPresetChip('5 Menit', 300, _manualSafetyTimeoutSec.round(), (v) => setState(() => _manualSafetyTimeoutSec = v.toDouble())),
+                                _buildPresetChip('10 Menit', 600, _manualSafetyTimeoutSec.round(), (v) => setState(() => _manualSafetyTimeoutSec = v.toDouble())),
+                                _buildPresetChip('15 Menit', 900, _manualSafetyTimeoutSec.round(), (v) => setState(() => _manualSafetyTimeoutSec = v.toDouble())),
+                                _buildPresetChip('30 Menit', 1800, _manualSafetyTimeoutSec.round(), (v) => setState(() => _manualSafetyTimeoutSec = v.toDouble())),
+                              ],
+                            ),
                           ),
                           const SizedBox(height: 8),
 
                           Slider(
-                            value: _manualSafetyTimeoutMin,
-                            min: 1,
-                            max: 30,
-                            divisions: 29,
+                            value: _manualSafetyTimeoutSec.clamp(10.0, 3600.0),
+                            min: 10,
+                            max: 3600,
+                            divisions: 71,
                             activeColor: AppColors.warning,
                             inactiveColor: AppColors.secondary.withValues(alpha: 0.4),
-                            onChanged: (val) => setState(() => _manualSafetyTimeoutMin = val),
+                            onChanged: (val) => setState(() => _manualSafetyTimeoutSec = val),
                           ),
                         ],
                       ),
@@ -714,14 +1291,21 @@ class _SettingsBottomSheetState extends State<SettingsBottomSheet> {
                   width: double.infinity,
                   decoration: AppDecorations.primaryButtonDecoration(radius: 26),
                   alignment: Alignment.center,
-                  child: const Text(
-                    'Simpan Konfigurasi Parameter',
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w700,
-                      color: Colors.white,
-                      letterSpacing: 0.3,
-                    ),
+                  child: const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.check_circle_outline_rounded, color: Colors.white, size: 20),
+                      SizedBox(width: 8),
+                      Text(
+                        'Simpan Konfigurasi Parameter',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                          letterSpacing: 0.3,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
@@ -759,65 +1343,13 @@ class _SettingsBottomSheetState extends State<SettingsBottomSheet> {
     );
   }
 
-  Widget _buildParameterCard({
-    required String title,
-    required String valueString,
-    required String description,
-    required Widget slider,
-  }) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: AppDecorations.raisedCard(radius: 18),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Expanded(
-                child: Text(
-                  title,
-                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: AppColors.badgeInfoBg,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  valueString,
-                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: AppColors.primary),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Text(
-            description,
-            style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
-          ),
-          slider,
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDurationPresetChip(String label, int seconds) {
-    final bool isSelected = _scheduledDurationSec.round() == seconds;
+  Widget _buildPresetChip(String label, int targetSeconds, int currentSeconds, ValueChanged<int> onSelect) {
+    final bool isSelected = currentSeconds == targetSeconds;
 
     return Padding(
       padding: const EdgeInsets.only(right: 6),
       child: GestureDetector(
-        onTap: () {
-          setState(() {
-            _scheduledDurationSec = seconds.toDouble();
-          });
-        },
+        onTap: () => onSelect(targetSeconds),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
           decoration: BoxDecoration(
@@ -834,41 +1366,6 @@ class _SettingsBottomSheetState extends State<SettingsBottomSheet> {
               fontSize: 11,
               fontWeight: FontWeight.w700,
               color: isSelected ? Colors.white : AppColors.textPrimary,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSafetyPresetChip(int minutes) {
-    final bool isSelected = _manualSafetyTimeoutMin.round() == minutes;
-
-    return Expanded(
-      child: GestureDetector(
-        onTap: () {
-          setState(() {
-            _manualSafetyTimeoutMin = minutes.toDouble();
-          });
-        },
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 7),
-          decoration: BoxDecoration(
-            color: isSelected ? AppColors.warning : AppColors.surfaceWhite,
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(
-              color: isSelected ? AppColors.warning : AppColors.cardBorder,
-            ),
-            boxShadow: AppDecorations.softRaisedShadow,
-          ),
-          child: Center(
-            child: Text(
-              '${minutes}m',
-              style: TextStyle(
-                fontSize: 11.5,
-                fontWeight: FontWeight.w700,
-                color: isSelected ? Colors.white : AppColors.textPrimary,
-              ),
             ),
           ),
         ),
@@ -907,7 +1404,7 @@ class _SettingsBottomSheetState extends State<SettingsBottomSheet> {
     );
   }
 
-  Widget _buildTimePickerTile(String label, String formattedTime, VoidCallback onTap) {
+  Widget _buildTimePickerTile(String label, String formattedTime, IconData icon, VoidCallback onTap) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -921,15 +1418,16 @@ class _SettingsBottomSheetState extends State<SettingsBottomSheet> {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Expanded(
-              child: Text(
-                label,
-                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
+            Row(
+              children: [
+                Icon(icon, size: 18, color: AppColors.primary),
+                const SizedBox(width: 8),
+                Text(
+                  label,
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
+                ),
+              ],
             ),
-            const SizedBox(width: 8),
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [

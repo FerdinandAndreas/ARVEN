@@ -183,167 +183,128 @@ class PumpStatusCard extends StatelessWidget {
 
           const SizedBox(height: 18),
 
-          // Action Buttons: Nyalakan Pompa & Hentikan Pompa
-          LayoutBuilder(
-            builder: (context, constraints) {
-              if (constraints.maxWidth > 350) {
-                return Row(
-                  children: [
-                    Expanded(
-                      flex: 6,
-                      child: GestureDetector(
-                        onTap: () {
-                          provider.toggleManualPump(true);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text('Perintah pompa manual ON dikirim (Auto cut-off aman: $safetyTimeout menit).'),
-                              backgroundColor: AppColors.primary,
-                              behavior: SnackBarBehavior.floating,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                            ),
-                          );
-                        },
-                        child: Container(
-                          height: 48,
-                          decoration: AppDecorations.primaryButtonDecoration(radius: 14),
-                          child: const Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.play_arrow_rounded, color: Colors.white, size: 20),
-                              SizedBox(width: 6),
-                              FittedBox(
-                                fit: BoxFit.scaleDown,
-                                child: Text(
-                                  'Nyalakan Pompa',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      flex: 5,
-                      child: GestureDetector(
-                        onTap: () {
-                          provider.toggleManualPump(false);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: const Text('Perintah stop pompa manual dikirim ke ESP32.'),
-                              backgroundColor: AppColors.danger,
-                              behavior: SnackBarBehavior.floating,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                            ),
-                          );
-                        },
-                        child: Container(
-                          height: 48,
-                          decoration: BoxDecoration(
-                            color: AppColors.surfaceWhite,
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(
-                              color: AppColors.danger.withValues(alpha: 0.3),
-                              width: 1.2,
-                            ),
-                            boxShadow: AppDecorations.softRaisedShadow,
-                          ),
-                          child: const Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.stop_rounded, color: AppColors.danger, size: 18),
-                              SizedBox(width: 4),
-                              FittedBox(
-                                fit: BoxFit.scaleDown,
-                                child: Text(
-                                  'Hentikan Pompa',
-                                  style: TextStyle(
-                                    color: AppColors.danger,
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                );
-              }
+          // Action Buttons: Nyalakan Pompa & Hentikan Pompa (Disabled saat bukan mode manual)
+          Builder(
+            builder: (context) {
+              final bool isManual = activeMode == 'manual';
 
-              return Column(
+              return Row(
                 children: [
-                  GestureDetector(
-                    onTap: () {
-                      provider.toggleManualPump(true);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('Perintah pompa manual ON dikirim (Auto cut-off aman: $safetyTimeout menit).'),
-                          backgroundColor: AppColors.primary,
-                          behavior: SnackBarBehavior.floating,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        ),
-                      );
-                    },
-                    child: Container(
-                      height: 48,
-                      width: double.infinity,
-                      decoration: AppDecorations.primaryButtonDecoration(radius: 14),
-                      child: const Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.play_arrow_rounded, color: Colors.white, size: 20),
-                          SizedBox(width: 6),
-                          Text(
-                            'Nyalakan Pompa Manual',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
+                  Expanded(
+                    flex: 6,
+                    child: GestureDetector(
+                      onTap: (isManual && !isPumpActive)
+                          ? () {
+                              provider.toggleManualPump(true);
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('Perintah pompa manual ON dikirim (Auto cut-off aman: $safetyTimeout menit).'),
+                                  backgroundColor: AppColors.primary,
+                                  behavior: SnackBarBehavior.floating,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                ),
+                              );
+                            }
+                          : null,
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        height: 48,
+                        decoration: (isManual && !isPumpActive)
+                            ? AppDecorations.primaryButtonDecoration(radius: 14)
+                            : BoxDecoration(
+                                color: const Color(0xFFF1F5F9),
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(color: const Color(0xFFE2E8F0), width: 1.0),
+                              ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.play_arrow_rounded,
+                              color: (isManual && !isPumpActive) ? Colors.white : const Color(0xFF94A3B8),
+                              size: 20,
                             ),
-                          ),
-                        ],
+                            const SizedBox(width: 6),
+                            FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(
+                                'Nyalakan Pompa',
+                                style: TextStyle(
+                                  color: (isManual && !isPumpActive) ? Colors.white : const Color(0xFF94A3B8),
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
-                  const SizedBox(height: 10),
-                  GestureDetector(
-                    onTap: () {
-                      provider.toggleManualPump(false);
-                    },
-                    child: Container(
-                      height: 48,
-                      width: double.infinity,
-                      decoration: BoxDecoration(
-                        color: AppColors.surfaceWhite,
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(
-                          color: AppColors.danger.withValues(alpha: 0.3),
-                          width: 1.2,
-                        ),
-                        boxShadow: AppDecorations.softRaisedShadow,
-                      ),
-                      child: const Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.stop_rounded, color: AppColors.danger, size: 18),
-                          SizedBox(width: 6),
-                          Text(
-                            'Hentikan Pompa',
-                            style: TextStyle(
-                              color: AppColors.danger,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
+                  const SizedBox(width: 10),
+                  Expanded(
+                    flex: 5,
+                    child: GestureDetector(
+                      onTap: (isManual && isPumpActive)
+                          ? () {
+                              provider.toggleManualPump(false);
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: const Text('Perintah stop pompa manual dikirim ke sistem.'),
+                                  backgroundColor: AppColors.danger,
+                                  behavior: SnackBarBehavior.floating,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                ),
+                              );
+                            }
+                          : null,
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        height: 48,
+                        decoration: (isManual && isPumpActive)
+                            ? BoxDecoration(
+                                gradient: const LinearGradient(
+                                  colors: [Color(0xFFEF4444), Color(0xFFDC2626)],
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                ),
+                                borderRadius: BorderRadius.circular(14),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: const Color(0xFFEF4444).withValues(alpha: 0.35),
+                                    offset: const Offset(0, 4),
+                                    blurRadius: 12,
+                                    spreadRadius: 0,
+                                  ),
+                                ],
+                              )
+                            : BoxDecoration(
+                                color: const Color(0xFFF1F5F9),
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(color: const Color(0xFFE2E8F0), width: 1.0),
+                              ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.stop_rounded,
+                              color: (isManual && isPumpActive) ? Colors.white : const Color(0xFF94A3B8),
+                              size: 18,
                             ),
-                          ),
-                        ],
+                            const SizedBox(width: 4),
+                            FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(
+                                'Hentikan Pompa',
+                                style: TextStyle(
+                                  color: (isManual && isPumpActive) ? Colors.white : const Color(0xFF94A3B8),
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),

@@ -82,24 +82,36 @@ class ScheduleCard extends StatelessWidget {
             timeRange: '${schedule.time1} (${_formatDuration(schedule.durationSec)})',
             recurrence: 'Setiap hari, penyegaran perakaran',
           ),
+
+          // Schedule Session 2: Siang (if frequency >= 3)
+          if (schedule.frequency >= 3) ...[
+            const SizedBox(height: 10),
+            _buildScheduleItem(
+              icon: Icons.light_mode_rounded,
+              title: 'Sesi Siang',
+              timeRange: '${schedule.frequency == 2 ? schedule.time3 : (schedule.time2.compareTo(schedule.time3) < 0 ? schedule.time2 : schedule.time3)} (${_formatDuration(schedule.durationSec)})',
+              recurrence: 'Setiap hari, pendinginan suhu',
+            ),
+          ],
+
           const SizedBox(height: 10),
 
-          // Schedule Session 2: Sore
+          // Schedule Session 3: Sore
           _buildScheduleItem(
-            icon: Icons.nightlight_round,
+            icon: Icons.wb_twilight_rounded,
             title: 'Sesi Sore',
-            timeRange: '${schedule.time2} (${_formatDuration(schedule.durationSec)})',
+            timeRange: '${schedule.frequency == 2 ? schedule.time2 : (schedule.time2.compareTo(schedule.time3) < 0 ? schedule.time3 : schedule.time2)} (${_formatDuration(schedule.durationSec)})',
             recurrence: 'Setiap hari, retensi kelembapan',
           ),
 
-          // Schedule Session 3 (if frequency = 3)
-          if (schedule.frequency == 3) ...[
+          // Schedule Session 4: Malam (if frequency >= 4)
+          if (schedule.frequency >= 4) ...[
             const SizedBox(height: 10),
             _buildScheduleItem(
-              icon: Icons.wb_twilight_rounded,
-              title: 'Sesi Siang',
-              timeRange: '${schedule.time3} (${_formatDuration(schedule.durationSec)})',
-              recurrence: 'Setiap hari, pendinginan suhu',
+              icon: Icons.nightlight_round,
+              title: 'Sesi Malam',
+              timeRange: '${schedule.time4} (${_formatDuration(schedule.durationSec)})',
+              recurrence: 'Setiap hari, hidrasi malam',
             ),
           ],
 
