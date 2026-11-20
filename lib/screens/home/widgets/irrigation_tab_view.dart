@@ -20,9 +20,8 @@ class IrrigationTabView extends StatefulWidget {
 }
 
 class _IrrigationTabViewState extends State<IrrigationTabView> {
-  // Karakteristik pompa mini: 600 Liter / jam = 10 Liter / menit = 0.1667 Liter / detik
+  // Karakteristik pompa mini: 600 Liter / jam (~0.1667 Liter / detik)
   static const double flowRateLph = 600.0;
-  static const double flowRateLpm = flowRateLph / 60.0; // 10 L/menit
   static const double flowRateLps = flowRateLph / 3600.0; // ~0.1667 L/detik
 
   Timer? _liveTimer;
@@ -97,16 +96,26 @@ class _IrrigationTabViewState extends State<IrrigationTabView> {
   @override
   Widget build(BuildContext context) {
     final pump = widget.device.pumpState;
-    final sched = widget.device.settings.schedule;
     final bool isPumpActive = pump.active;
 
-    // Estimasi akumulasi hari ini
-    final int scheduledRunSec = (sched.frequency * sched.durationSec);
-    final int manualLastSec = pump.lastDurationSec > 0 ? pump.lastDurationSec : 0;
-    final int totalSecondsToday = scheduledRunSec + manualLastSec + (_liveElapsedSeconds);
-    final double totalWaterToday = _calculateLiters(totalSecondsToday);
+    // Filter riwayat hari ini dari tengah malam
+    final now = DateTime.now();
+    final startOfToday = DateTime(now.year, now.month, now.day).millisecondsSinceEpoch;
+    final todayLogs = widget.deviceProvider.historyList.where((item) => item.timestamp >= startOfToday).toList();
 
-    // Target wajar air tanaman harian (misal 35 - 40 L)
+    int totalSecondsToday = 0;
+    double totalWaterToday = 0.0;
+    for (final log in todayLogs) {
+      totalSecondsToday += log.durationSec;
+      totalWaterToday += log.waterLiters;
+    }
+
+    if (isPumpActive) {
+      totalSecondsToday += _liveElapsedSeconds;
+      totalWaterToday += _calculateLiters(_liveElapsedSeconds);
+    }
+
+    // Target wajar air tanaman harian (40 L)
     const double dailyTargetLiters = 40.0;
     final double targetPercent = (totalWaterToday / dailyTargetLiters).clamp(0.0, 1.0);
 
@@ -201,7 +210,12 @@ class _IrrigationTabViewState extends State<IrrigationTabView> {
                   // ==========================================
                   // GRID METRIK KONSUMSI AIR (4 KARTU 2x2)
                   // ==========================================
-                  _buildWaterMetricsGrid(totalWaterToday, totalSecondsToday, isCompact),
+                  _buildWaterMetricsGrid(
+                    totalWaterToday,
+                    totalSecondsToday,
+                    todayLogs.length + (isPumpActive ? 1 : 0),
+                    isCompact,
+                  ),
                   const SizedBox(height: 18),
 
                   // ==========================================
@@ -213,7 +227,7 @@ class _IrrigationTabViewState extends State<IrrigationTabView> {
                   // ==========================================
                   // LOG RIWAYAT PENYIRAMAN DETAIL
                   // ==========================================
-                  _buildIrrigationExecutionLog(sched),
+                  _buildIrrigationExecutionLog(),
                   const SizedBox(height: 28),
                 ],
               ),
@@ -348,6 +362,44 @@ class _IrrigationTabViewState extends State<IrrigationTabView> {
                 ),
               ],
             ),
+            const SizedBox(height: 14),
+            GestureDetector(
+              onTap: () {
+                widget.deviceProvider.toggleManualPump(false);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: const Text('Pompa berhasil dimatikan & disinkronkan ke Firebase.'),
+                    backgroundColor: AppColors.danger,
+                    behavior: SnackBarBehavior.floating,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                );
+              },
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.white.withValues(alpha: 0.4)),
+                ),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.stop_circle_outlined, color: Colors.white, size: 18),
+                    SizedBox(width: 6),
+                    Text(
+                      'Hentikan Pompa Sekarang',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           ],
         ),
       );
@@ -355,7 +407,7 @@ class _IrrigationTabViewState extends State<IrrigationTabView> {
 
     // Standby State
     final int lastDur = widget.device.pumpState.lastDurationSec;
-    final double lastLit = _calculateLiters(lastDur > 0 ? lastDur : 120);
+    final double lastLit = _calculateLiters(lastDur > 0 ? lastDur : 0);
 
     return Container(
       padding: EdgeInsets.all(isCompact ? 16 : 20),
@@ -387,7 +439,9 @@ class _IrrigationTabViewState extends State<IrrigationTabView> {
                 ),
                 const SizedBox(height: 3),
                 Text(
-                  'Sesi terakhir mengalirkan ~${_formatVolume(lastLit)} air dalam ${_formatDuration(lastDur > 0 ? lastDur : 120)}.',
+                  lastDur > 0
+                      ? 'Sesi terakhir mengalirkan ~${_formatVolume(lastLit)} air dalam ${_formatDuration(lastDur)}.'
+                      : 'Sistem siap menyiram. Pompa dalam keadaan mati (0 L/jam).',
                   style: const TextStyle(
                     fontSize: 12,
                     color: AppColors.textSecondary,
@@ -403,7 +457,7 @@ class _IrrigationTabViewState extends State<IrrigationTabView> {
   }
 
   // 2. Grid Metrik Konsumsi Air (4 Cards 2x2)
-  Widget _buildWaterMetricsGrid(double totalWaterToday, int totalSecondsToday, bool isCompact) {
+  Widget _buildWaterMetricsGrid(double totalWaterToday, int totalSecondsToday, int todaySessions, bool isCompact) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -425,7 +479,7 @@ class _IrrigationTabViewState extends State<IrrigationTabView> {
                 iconBgColor: const Color(0xFFEFF6FF),
                 title: 'Total Air Hari Ini',
                 value: _formatVolume(totalWaterToday),
-                subtitle: '~${widget.device.settings.schedule.frequency} sesi penyiraman',
+                subtitle: '$todaySessions sesi penyiraman',
               ),
             ),
             const SizedBox(width: 10),
@@ -451,7 +505,7 @@ class _IrrigationTabViewState extends State<IrrigationTabView> {
                 iconBgColor: const Color(0xFFEEF2FF),
                 title: 'Total Durasi Aktif',
                 value: _formatDuration(totalSecondsToday),
-                subtitle: 'Akumulasi pompa ON',
+                subtitle: totalSecondsToday > 0 ? 'Akumulasi pompa ON' : 'Belum aktif hari ini',
               ),
             ),
             const SizedBox(width: 10),
@@ -460,9 +514,9 @@ class _IrrigationTabViewState extends State<IrrigationTabView> {
                 icon: Icons.eco_rounded,
                 iconColor: const Color(0xFF10B981),
                 iconBgColor: const Color(0xFFECFDF5),
-                title: 'Efisiensi Hujan',
-                value: 'Hemat 20 L',
-                subtitle: 'Proteksi Rain Delay',
+                title: 'Proteksi Hujan',
+                value: widget.device.settings.rainDelayEnabled ? 'Aktif' : 'Nonaktif',
+                subtitle: 'Tunda saat hujan',
               ),
             ),
           ],
@@ -604,52 +658,9 @@ class _IrrigationTabViewState extends State<IrrigationTabView> {
     );
   }
 
-  // 4. Log Riwayat Eksekusi Penyiraman
-  Widget _buildIrrigationExecutionLog(DeviceSchedule sched) {
-    final double scheduledLiters = _calculateLiters(sched.durationSec > 0 ? sched.durationSec : 120);
-
-    final logs = [
-      {
-        'title': 'Sesi Sore (Terjadwal)',
-        'time': sched.time2.isNotEmpty ? '${sched.time2} WIB' : '16:30 WIB',
-        'duration': _formatDuration(sched.durationSec > 0 ? sched.durationSec : 120),
-        'water': _formatVolume(scheduledLiters),
-        'status': 'Selesai',
-        'statusColor': AppColors.badgeSuccessText,
-        'statusBg': AppColors.badgeSuccessBg,
-        'detail': 'Kelembapan tanah: 34% → 82%',
-      },
-      {
-        'title': 'Sesi Otomatis Kelembapan',
-        'time': '13:15 WIB',
-        'duration': '1 mnt 30 dtk',
-        'water': _formatVolume(_calculateLiters(90)),
-        'status': 'Auto Cut-Off',
-        'statusColor': const Color(0xFF1D4ED8),
-        'statusBg': const Color(0xFFEFF6FF),
-        'detail': 'Pemicu kelembapan tanah ≤ 40%',
-      },
-      {
-        'title': 'Sesi Siang (Proteksi Hujan)',
-        'time': '11:45 WIB',
-        'duration': '0 dtk',
-        'water': 'Hemat ~20 L',
-        'status': 'Tunda Hujan',
-        'statusColor': AppColors.badgeWarningText,
-        'statusBg': AppColors.badgeWarningBg,
-        'detail': 'Sensor mendeteksi presipitasi air hujan',
-      },
-      {
-        'title': 'Sesi Pagi (Terjadwal)',
-        'time': sched.time1.isNotEmpty ? '${sched.time1} WIB' : '07:00 WIB',
-        'duration': _formatDuration(sched.durationSec > 0 ? sched.durationSec : 120),
-        'water': _formatVolume(scheduledLiters),
-        'status': 'Selesai',
-        'statusColor': AppColors.badgeSuccessText,
-        'statusBg': AppColors.badgeSuccessBg,
-        'detail': 'Penyegaran perakaran pagi hari',
-      },
-    ];
+  // 4. Log Riwayat Eksekusi Penyiraman (Data Nyata dari Firebase Realtime Database)
+  Widget _buildIrrigationExecutionLog() {
+    final historyList = widget.deviceProvider.historyList;
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -660,138 +671,273 @@ class _IrrigationTabViewState extends State<IrrigationTabView> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
-                'Riwayat Eksekusi Penyiraman',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w800,
-                  color: AppColors.textPrimary,
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: AppColors.badgeInfoBg,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Text(
-                  'Hari Ini',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.primary,
+              const Row(
+                children: [
+                  Icon(Icons.history_rounded, size: 18, color: AppColors.primary),
+                  SizedBox(width: 6),
+                  Text(
+                    'Riwayat Eksekusi Penyiraman',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.textPrimary,
+                    ),
                   ),
-                ),
+                ],
               ),
-            ],
-          ),
-          const SizedBox(height: 12),
-
-          // Log list items
-          ...logs.asMap().entries.map((entry) {
-            final index = entry.key;
-            final item = entry.value;
-            final isLast = index == logs.length - 1;
-
-            return Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Container(
-                        margin: const EdgeInsets.only(top: 3),
-                        width: 32,
-                        height: 32,
+              Row(
+                children: [
+                  if (historyList.isNotEmpty)
+                    GestureDetector(
+                      onTap: () => _showResetConfirmationDialog(),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
-                          color: (item['statusBg'] as Color),
-                          borderRadius: BorderRadius.circular(10),
+                          color: const Color(0xFFFEE2E2),
+                          borderRadius: BorderRadius.circular(8),
                         ),
-                        child: Icon(
-                          Icons.water_drop_rounded,
-                          size: 16,
-                          color: (item['statusColor'] as Color),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                        child: const Row(
                           children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    item['title'] as String,
-                                    style: const TextStyle(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w700,
-                                      color: AppColors.textPrimary,
-                                    ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                                Text(
-                                  item['time'] as String,
-                                  style: const TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w600,
-                                    color: AppColors.textLight,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 3),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text(
-                                  'Air: ${item['water']} • Durasi: ${item['duration']}',
-                                  style: const TextStyle(
-                                    fontSize: 11.5,
-                                    fontWeight: FontWeight.w600,
-                                    color: Color(0xFF2563EB),
-                                  ),
-                                ),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                  decoration: BoxDecoration(
-                                    color: item['statusBg'] as Color,
-                                    borderRadius: BorderRadius.circular(6),
-                                  ),
-                                  child: Text(
-                                    item['status'] as String,
-                                    style: TextStyle(
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.w700,
-                                      color: item['statusColor'] as Color,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 2),
+                            Icon(Icons.delete_sweep_rounded, size: 13, color: AppColors.danger),
+                            SizedBox(width: 4),
                             Text(
-                              item['detail'] as String,
-                              style: const TextStyle(
-                                fontSize: 11,
-                                color: AppColors.textSecondary,
+                              'Reset Log',
+                              style: TextStyle(
+                                fontSize: 10.5,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.danger,
                               ),
                             ),
                           ],
                         ),
                       ),
-                    ],
+                    ),
+                  const SizedBox(width: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: AppColors.badgeInfoBg,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      '${historyList.length} Log',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.primary,
+                      ),
+                    ),
                   ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          // Tampilkan Empty State jika belum ada riwayat penyiraman di Firebase
+          if (historyList.isEmpty)
+            Container(
+              padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 16),
+              alignment: Alignment.center,
+              child: Column(
+                children: [
+                  Container(
+                    width: 48,
+                    height: 48,
+                    decoration: const BoxDecoration(
+                      color: Color(0xFFF1F5F9),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.history_toggle_off_rounded, size: 24, color: Color(0xFF94A3B8)),
+                  ),
+                  const SizedBox(height: 10),
+                  const Text(
+                    'Belum Ada Riwayat Penyiraman',
+                    style: TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  const Text(
+                    'Riwayat akan otomatis tercatat di Firebase saat pompa selesai menyiram tanaman.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      color: AppColors.textSecondary,
+                      height: 1.35,
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else
+            ...historyList.take(20).toList().asMap().entries.map((entry) {
+              final index = entry.key;
+              final item = entry.value;
+              final isLast = index == historyList.length - 1 || index == 19;
+
+              final date = DateTime.fromMillisecondsSinceEpoch(item.timestamp);
+              final timeStr = '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')} WIB';
+
+              Color statusBg = AppColors.badgeSuccessBg;
+              Color statusColor = AppColors.badgeSuccessText;
+              if (item.status.contains('Cut-Off') || item.status.contains('Dihentikan')) {
+                statusBg = const Color(0xFFEFF6FF);
+                statusColor = const Color(0xFF1D4ED8);
+              } else if (item.status.contains('Hujan')) {
+                statusBg = AppColors.badgeWarningBg;
+                statusColor = AppColors.badgeWarningText;
+              }
+
+              return Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          margin: const EdgeInsets.only(top: 3),
+                          width: 32,
+                          height: 32,
+                          decoration: BoxDecoration(
+                            color: statusBg,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Icon(
+                            Icons.water_drop_rounded,
+                            size: 16,
+                            color: statusColor,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      item.title,
+                                      style: const TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w700,
+                                        color: AppColors.textPrimary,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  Text(
+                                    timeStr,
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                      color: AppColors.textLight,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 3),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text(
+                                    'Air: ${_formatVolume(item.waterLiters)} • Durasi: ${_formatDuration(item.durationSec)}',
+                                    style: const TextStyle(
+                                      fontSize: 11.5,
+                                      fontWeight: FontWeight.w600,
+                                      color: Color(0xFF2563EB),
+                                    ),
+                                  ),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: statusBg,
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: Text(
+                                      item.status,
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w700,
+                                        color: statusColor,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              if (item.soilBefore > 0 || item.soilAfter > 0) ...[
+                                const SizedBox(height: 2),
+                                Text(
+                                  'Kelembapan tanah: ${item.soilBefore.toStringAsFixed(0)}% → ${item.soilAfter.toStringAsFixed(0)}%',
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    color: AppColors.textSecondary,
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (!isLast)
+                    const Divider(color: Color(0xFFF1F5F9), height: 14),
+                ],
+              );
+            }),
+        ],
+      ),
+    );
+  }
+
+  void _showResetConfirmationDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: AppColors.danger),
+            SizedBox(width: 8),
+            Text('Reset Semua Statistik?', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+          ],
+        ),
+        content: const Text(
+          'Tindakan ini akan mengosongkan riwayat penyiraman di Firebase dan mengembalikan akumulasi air ke 0.',
+          style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Batal', style: TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.w600)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.danger,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            onPressed: () {
+              Navigator.pop(ctx);
+              widget.deviceProvider.resetAllStatistics();
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: const Text('Seluruh statistik dan riwayat Firebase berhasil di-reset ke 0.'),
+                  backgroundColor: AppColors.danger,
+                  behavior: SnackBarBehavior.floating,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 ),
-                if (!isLast)
-                  const Divider(color: Color(0xFFF1F5F9), height: 14),
-              ],
-            );
-          }),
+              );
+            },
+            child: const Text('Reset Sekarang', style: TextStyle(fontWeight: FontWeight.w700)),
+          ),
         ],
       ),
     );

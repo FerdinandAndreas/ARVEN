@@ -248,3 +248,67 @@ class DeviceData {
     );
   }
 }
+
+class IrrigationHistoryItem {
+  final String id;
+  final int timestamp;
+  final String title;
+  final String mode; // 'manual', 'scheduled', 'auto_moisture'
+  final int durationSec;
+  final double waterLiters;
+  final double soilBefore;
+  final double soilAfter;
+  final String status; // 'Selesai', 'Auto Cut-Off', 'Dihentikan Manual', 'Tunda Hujan'
+
+  IrrigationHistoryItem({
+    required this.id,
+    required this.timestamp,
+    required this.title,
+    required this.mode,
+    required this.durationSec,
+    required this.waterLiters,
+    required this.soilBefore,
+    required this.soilAfter,
+    required this.status,
+  });
+
+  factory IrrigationHistoryItem.fromMap(String id, Map<dynamic, dynamic>? map) {
+    if (map == null) {
+      return IrrigationHistoryItem(
+        id: id,
+        timestamp: DateTime.now().millisecondsSinceEpoch,
+        title: 'Penyiraman',
+        mode: 'manual',
+        durationSec: 0,
+        waterLiters: 0.0,
+        soilBefore: 0.0,
+        soilAfter: 0.0,
+        status: 'Selesai',
+      );
+    }
+    return IrrigationHistoryItem(
+      id: id,
+      timestamp: (map['timestamp'] as num?)?.toInt() ?? DateTime.now().millisecondsSinceEpoch,
+      title: map['title']?.toString() ?? 'Penyiraman',
+      mode: map['mode']?.toString() ?? 'manual',
+      durationSec: (map['duration_sec'] as num?)?.toInt() ?? 0,
+      waterLiters: (map['water_liters'] as num?)?.toDouble() ?? 0.0,
+      soilBefore: (map['soil_before'] as num?)?.toDouble() ?? 0.0,
+      soilAfter: (map['soil_after'] as num?)?.toDouble() ?? 0.0,
+      status: map['status']?.toString() ?? 'Selesai',
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'timestamp': timestamp,
+      'title': title,
+      'mode': mode,
+      'duration_sec': durationSec,
+      'water_liters': waterLiters,
+      'soil_before': soilBefore,
+      'soil_after': soilAfter,
+      'status': status,
+    };
+  }
+}

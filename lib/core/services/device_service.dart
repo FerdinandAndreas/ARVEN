@@ -48,9 +48,81 @@ class DeviceService {
   }
 
   // Mengubah status sakelar pompa manual (true = ON, false = OFF)
-  Future<void> setManualPumpCommand(String deviceId, bool active) async {
-    final ref = _db.ref('devices/$deviceId/control/pump_manual_command');
-    await ref.set(active);
+  Future<void> setManualPumpCommand(String deviceId, bool active, {int durationSec = 0, double currentSoil = 0.0}) async {
+    final ref = _db.ref('devices/$deviceId');
+    final updates = <String, dynamic>{
+      'control/pump_manual_command': active,
+      'pump_state/active': active,
+    };
+    if (!active) {
+      updates['pump_state/last_duration_sec'] = durationSec;
+      // Jika pompa dimatikan setelah berjalan > 0 detik, catat riwayat manual ke Firebase
+      if (durationSec > 0) {
+        final double waterLiters = durationSec * (600.0 / 3600.0);
+        final historyRef = _db.ref('devices/$deviceId/history').push();
+        await historyRef.set({
+          'timestamp': DateTime.now().millisecondsSinceEpoch,
+          'title': 'Penyiraman Manual',
+          'mode': 'manual',
+          'duration_sec': durationSec,
+          'water_liters': double.parse(waterLiters.toStringAsFixed(2)),
+          'soil_before': currentSoil,
+          'soil_after': currentSoil,
+          'status': 'Dihentikan Manual',
+        });
+      }
+    } else {
+      updates['pump_state/last_started'] = DateTime.now().millisecondsSinceEpoch;
+    }
+    await ref.update(updates);
+  }
+
+  // Stream riwayat penyiraman (terbaru di atas)
+  Stream<List<IrrigationHistoryItem>> streamHistory(String deviceId) {
+    final ref = _db.ref('devices/$deviceId/history');
+    return ref.limitToLast(50).onValue.map((event) {
+      final value = event.snapshot.value;
+      if (value is Map<dynamic, dynamic>) {
+        final list = <IrrigationHistoryItem>[];
+        value.forEach((key, val) {
+          if (val is Map<dynamic, dynamic>) {
+            list.add(IrrigationHistoryItem.fromMap(key.toString(), val));
+          }
+        });
+        list.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+        return list;
+      }
+      return <IrrigationHistoryItem>[];
+    });
+  }
+
+  // Catat riwayat penyiraman baru ke Firebase
+  Future<void> logIrrigationHistory(String deviceId, IrrigationHistoryItem item) async {
+    final ref = _db.ref('devices/$deviceId/history').push();
+    await ref.set(item.toMap());
+  }
+
+  // Paksa reset status pompa ke OFF di Firebase Realtime Database
+  Future<void> resetPumpToOff(String deviceId) async {
+    final ref = _db.ref('devices/$deviceId');
+    await ref.update({
+      'control/pump_manual_command': false,
+      'pump_state/active': false,
+      'pump_state/last_duration_sec': 0,
+      'pump_state/last_started': 0,
+    });
+  }
+
+  // Reset total seluruh statistik & bersihkan data riwayat di Firebase
+  Future<void> resetAllDeviceStatistics(String deviceId) async {
+    final ref = _db.ref('devices/$deviceId');
+    await ref.update({
+      'pump_state/active': false,
+      'pump_state/last_started': 0,
+      'pump_state/last_duration_sec': 0,
+      'control/pump_manual_command': false,
+      'history': null,
+    });
   }
 
   // Memperbarui pengaturan sistem (ambang kelembapan, durasi, jeda, jadwal)
@@ -85,8 +157,8 @@ class DeviceService {
           'pump_state': {
             'active': false,
             'current_mode': 'auto_moisture',
-            'last_started': now - 3600000,
-            'last_duration_sec': 15,
+            'last_started': 0,
+            'last_duration_sec': 0,
           },
           'settings': {
             'moisture_threshold': 40,

@@ -110,6 +110,7 @@ unsigned long pumpStartTime         = 0;
 unsigned long pumpDurationLimit     = 0;
 unsigned long lastSoakTimestamp     = 0;
 bool hasFinishedAutoCycle           = false;
+float pumpStartSoilMoisture         = 0.0;
 
 unsigned long lastFetchTime         = 0;
 unsigned long lastSensorSyncTime    = 0;
@@ -127,6 +128,7 @@ void connectWiFi();
 void syncNtpTime();
 void readSensors();
 void updatePumpState(bool active, const String& modeTrigger, int durationSec);
+void logIrrigationHistoryToFirebase(const String& mode, int durationSec, float soilBefore, float soilAfter);
 void resetManualCommandInFirebase();
 void processIrrigationLogic();
 void checkScheduledIrrigation();
@@ -167,6 +169,9 @@ void setup() {
   readSensors();
   sendTelemetryToFirebase();
   sendHeartbeatToFirebase();
+
+  // Sinkronkan status awal pompa ke Firebase (pastikan OFF saat boot)
+  updatePumpState(false, "boot", 0);
 
   Serial.println("[SYSTEM] Inisialisasi selesai. Sistem irigasi siap beroperasi.\n");
 }
@@ -329,12 +334,14 @@ void checkScheduledIrrigation() {
 }
 
 void updatePumpState(bool active, const String& modeTrigger, int durationSec) {
+  bool wasActive = isPumpActive;
   isPumpActive = active;
   digitalWrite(PIN_RELAY_PUMP, active ? RELAY_ON : RELAY_OFF);
   digitalWrite(PIN_STATUS_LED, active ? HIGH : LOW);
 
   if (active) {
     pumpStartTime = millis();
+    pumpStartSoilMoisture = currentSensors.soilMoisture;
   }
 
   if (WiFi.status() == WL_CONNECTED) {
@@ -351,7 +358,7 @@ void updatePumpState(bool active, const String& modeTrigger, int durationSec) {
     StaticJsonDocument<256> doc;
     doc["active"]            = isPumpActive;
     doc["current_mode"]      = modeTrigger;
-    doc["last_started"]      = getEpochTimeMs();
+    doc["last_started"]      = active ? getEpochTimeMs() : 0;
     doc["last_duration_sec"] = durationSec;
 
     String jsonPayload;
@@ -359,7 +366,61 @@ void updatePumpState(bool active, const String& modeTrigger, int durationSec) {
 
     http.PUT(jsonPayload);
     http.end();
+
+    // Catat log riwayat ke Firebase saat pompa berhenti menyiram
+    if (wasActive && !active && durationSec > 0) {
+      logIrrigationHistoryToFirebase(modeTrigger, durationSec, pumpStartSoilMoisture, currentSensors.soilMoisture);
+    }
   }
+}
+
+void logIrrigationHistoryToFirebase(const String& mode, int durationSec, float soilBefore, float soilAfter) {
+  if (WiFi.status() != WL_CONNECTED) return;
+
+  WiFiClientSecure client;
+  client.setInsecure();
+  HTTPClient http;
+
+  String url = String(FIREBASE_HOST) + "/devices/" + DEVICE_ID + "/history.json";
+  if (strlen(FIREBASE_AUTH) > 0) url += "?auth=" + String(FIREBASE_AUTH);
+
+  http.begin(client, url);
+  http.addHeader("Content-Type", "application/json");
+
+  // Pompa mini 600 L/jam = 0.1667 L/detik
+  float waterLiters = (float)durationSec * (600.0 / 3600.0);
+
+  String title = "Penyiraman Otomatis";
+  String status = "Selesai";
+  if (mode == "scheduled") {
+    title = "Penyiraman Terjadwal";
+  } else if (mode == "manual") {
+    title = "Penyiraman Manual";
+    status = "Dihentikan Manual";
+  } else if (mode == "manual_auto_cutoff") {
+    title = "Penyiraman Manual";
+    status = "Auto Cut-Off";
+  }
+
+  StaticJsonDocument<256> doc;
+  doc["timestamp"]    = getEpochTimeMs();
+  doc["title"]        = title;
+  doc["mode"]         = mode;
+  doc["duration_sec"] = durationSec;
+  doc["water_liters"] = serialized(String(waterLiters, 2));
+  doc["soil_before"]  = serialized(String(soilBefore, 1));
+  doc["soil_after"]   = serialized(String(soilAfter, 1));
+  doc["status"]       = status;
+
+  String jsonPayload;
+  serializeJson(doc, jsonPayload);
+
+  int httpCode = http.POST(jsonPayload);
+  if (httpCode > 0) {
+    Serial.printf("[HISTORY] Log penyiraman (%s, %d dtk, %.2f L) berhasil disimpan ke Firebase.\n",
+                  title.c_str(), durationSec, waterLiters);
+  }
+  http.end();
 }
 
 void resetManualCommandInFirebase() {

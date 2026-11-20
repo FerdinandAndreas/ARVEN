@@ -863,16 +863,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
               const SizedBox(width: 10),
 
-              // Button 2: Hentikan Pompa
+              // Button 2: Hentikan Pompa (Bisa ditekan kapan saja pompa aktif)
               Expanded(
                 flex: 5,
                 child: GestureDetector(
-                  onTap: (isManual && isPumpActive)
+                  onTap: isPumpActive
                       ? () {
-                          deviceProvider.toggleManualPump(false);
+                          deviceProvider.forceTurnOffPump();
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
-                              content: const Text('Perintah stop pompa manual dikirim ke sistem.'),
+                              content: const Text('Pompa dimatikan dan disinkronkan ke Firebase.'),
                               backgroundColor: AppColors.danger,
                               behavior: SnackBarBehavior.floating,
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -883,7 +883,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 200),
                     height: 46,
-                    decoration: (isManual && isPumpActive)
+                    decoration: isPumpActive
                         ? BoxDecoration(
                             gradient: const LinearGradient(
                               colors: [Color(0xFFEF4444), Color(0xFFDC2626)],
@@ -910,7 +910,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       children: [
                         Icon(
                           Icons.stop_rounded,
-                          color: (isManual && isPumpActive) ? Colors.white : const Color(0xFF94A3B8),
+                          color: isPumpActive ? Colors.white : const Color(0xFF94A3B8),
                           size: 18,
                         ),
                         const SizedBox(width: 4),
@@ -919,7 +919,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           child: Text(
                             'Hentikan Pompa',
                             style: TextStyle(
-                              color: (isManual && isPumpActive) ? Colors.white : const Color(0xFF94A3B8),
+                              color: isPumpActive ? Colors.white : const Color(0xFF94A3B8),
                               fontSize: 13,
                               fontWeight: FontWeight.w700,
                             ),
