@@ -312,3 +312,51 @@ class IrrigationHistoryItem {
     };
   }
 }
+
+enum TrendRange {
+  oneHour('1 Jam', Duration(hours: 1)),
+  twentyFourHours('24 Jam', Duration(hours: 24)),
+  threeDays('3 Hari', Duration(days: 3)),
+  sevenDays('7 Hari', Duration(days: 7)),
+  thirtyDays('30 Hari', Duration(days: 30));
+
+  final String label;
+  final Duration duration;
+  const TrendRange(this.label, this.duration);
+}
+
+class SensorLogPoint {
+  final int timestamp;
+  final double soilMoisture;
+  final double temperature;
+  final double humidity;
+  final bool rain;
+
+  const SensorLogPoint({
+    required this.timestamp,
+    required this.soilMoisture,
+    required this.temperature,
+    required this.humidity,
+    required this.rain,
+  });
+
+  factory SensorLogPoint.fromMap(Map<dynamic, dynamic> map) {
+    return SensorLogPoint(
+      timestamp: (map['timestamp'] as num?)?.toInt() ?? 0,
+      soilMoisture: (map['soil_moisture'] as num?)?.toDouble() ?? 0.0,
+      temperature: (map['temperature'] as num?)?.toDouble() ?? 0.0,
+      humidity: (map['humidity'] as num?)?.toDouble() ?? 0.0,
+      rain: map['rain'] == true,
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'timestamp': timestamp,
+      'soil_moisture': soilMoisture,
+      'temperature': temperature,
+      'humidity': humidity,
+      'rain': rain,
+    };
+  }
+}

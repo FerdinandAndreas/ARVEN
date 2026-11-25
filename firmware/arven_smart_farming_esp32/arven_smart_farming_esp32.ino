@@ -114,6 +114,7 @@ float pumpStartSoilMoisture         = 0.0;
 
 unsigned long lastFetchTime         = 0;
 unsigned long lastSensorSyncTime    = 0;
+unsigned long lastSensorLogTime     = 0;
 unsigned long lastHeartbeatTime     = 0;
 
 // NTP Server untuk Waktu Indonesia Barat (WIB = UTC+7 = 25200 detik)
@@ -133,6 +134,7 @@ void resetManualCommandInFirebase();
 void processIrrigationLogic();
 void checkScheduledIrrigation();
 void sendTelemetryToFirebase();
+void sendSensorLogToFirebase();
 void sendHeartbeatToFirebase();
 void fetchControlAndSettingsFromFirebase();
 bool getFormattedCurrentTime(String& outTime);
@@ -168,6 +170,7 @@ void setup() {
   // Baca sensor & kirim status pertama
   readSensors();
   sendTelemetryToFirebase();
+  sendSensorLogToFirebase();
   sendHeartbeatToFirebase();
 
   // Sinkronkan status awal pompa ke Firebase (pastikan OFF saat boot)
@@ -202,7 +205,13 @@ void loop() {
     sendTelemetryToFirebase();
   }
 
-  // 5. Kirim Heartbeat status online tiap 15 detik
+  // 5. Catat snapshot historis grafik sensor tiap 2 menit (idempoten per menit)
+  if (millis() - lastSensorLogTime >= 120000) {
+    lastSensorLogTime = millis();
+    sendSensorLogToFirebase();
+  }
+
+  // 6. Kirim Heartbeat status online tiap 15 detik
   if (millis() - lastHeartbeatTime >= 15000) {
     lastHeartbeatTime = millis();
     sendHeartbeatToFirebase();
@@ -510,6 +519,73 @@ void sendTelemetryToFirebase() {
     Serial.printf("[SYNC GAGAL] HTTP Code: %d\n", code);
   }
   http.end();
+}
+
+void sendSensorLogToFirebase() {
+  if (WiFi.status() != WL_CONNECTED) return;
+
+  time_t now;
+  time(&now);
+  if (now <= 1700000000) return; // Tunggu NTP valid agar riwayat grafik akurat
+
+  unsigned long epochMin = (unsigned long)(now / 60);
+  char keyBuf[16];
+  sprintf(keyBuf, "m_%010lu", epochMin);
+  uint64_t bucketMs = (uint64_t)epochMin * 60000ULL;
+
+  WiFiClientSecure client;
+  client.setInsecure();
+  HTTPClient http;
+
+  String url = String(FIREBASE_HOST) + "/devices/" + DEVICE_ID + "/sensor_logs/" + String(keyBuf) + ".json";
+  if (strlen(FIREBASE_AUTH) > 0) url += "?auth=" + String(FIREBASE_AUTH);
+
+  http.begin(client, url);
+  http.addHeader("Content-Type", "application/json");
+
+  StaticJsonDocument<256> doc;
+  doc["timestamp"]     = bucketMs;
+  doc["soil_moisture"] = round(currentSensors.soilMoisture * 10.0) / 10.0;
+  doc["temperature"]   = round(currentSensors.temperature * 10.0) / 10.0;
+  doc["humidity"]      = round(currentSensors.humidity * 10.0) / 10.0;
+  doc["rain"]          = currentSensors.isRaining;
+
+  String payload;
+  serializeJson(doc, payload);
+
+  int code = http.PUT(payload);
+  if (code > 0) {
+    Serial.printf("[SENSOR_LOG] Snapshot %s tersimpan (HTTP %d).\n", keyBuf, code);
+  }
+  http.end();
+
+  // Simpan juga ringkasan per jam sekali setiap jam untuk grafik 3 hari - 30 hari
+  static unsigned long lastLoggedHour = 0;
+  unsigned long epochHour = (unsigned long)(now / 3600);
+  if (epochHour != lastLoggedHour) {
+    lastLoggedHour = epochHour;
+    char hourKey[16];
+    sprintf(hourKey, "h_%08lu", epochHour);
+    uint64_t hourMs = (uint64_t)epochHour * 3600000ULL;
+
+    String hourUrl = String(FIREBASE_HOST) + "/devices/" + DEVICE_ID + "/sensor_logs_hourly/" + String(hourKey) + ".json";
+    if (strlen(FIREBASE_AUTH) > 0) hourUrl += "?auth=" + String(FIREBASE_AUTH);
+
+    http.begin(client, hourUrl);
+    http.addHeader("Content-Type", "application/json");
+
+    StaticJsonDocument<256> hourDoc;
+    hourDoc["timestamp"]     = hourMs;
+    hourDoc["soil_moisture"] = round(currentSensors.soilMoisture * 10.0) / 10.0;
+    hourDoc["temperature"]   = round(currentSensors.temperature * 10.0) / 10.0;
+    hourDoc["humidity"]      = round(currentSensors.humidity * 10.0) / 10.0;
+    hourDoc["rain"]          = currentSensors.isRaining;
+
+    String hourPayload;
+    serializeJson(hourDoc, hourPayload);
+    http.PUT(hourPayload);
+    http.end();
+  }
 }
 
 void sendHeartbeatToFirebase() {

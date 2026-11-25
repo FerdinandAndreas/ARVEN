@@ -96,6 +96,88 @@ class DeviceService {
     });
   }
 
+  // Simpan snapshot sensor per menit secara idempoten agar multi-perangkat tidak menggandakan titik grafik
+  Future<void> recordSensorLogPoint(String deviceId, SensorLogPoint point) async {
+    final int minuteBucket = point.timestamp ~/ 60000;
+    final String key = 'm_${minuteBucket.toString().padLeft(10, '0')}';
+    final ref = _db.ref('devices/$deviceId/sensor_logs/$key');
+    await ref.set({
+      'timestamp': minuteBucket * 60000,
+      'soil_moisture': double.parse(point.soilMoisture.toStringAsFixed(1)),
+      'temperature': double.parse(point.temperature.toStringAsFixed(1)),
+      'humidity': double.parse(point.humidity.toStringAsFixed(1)),
+      'rain': point.rain,
+    });
+  }
+
+  // Simpan ringkasan per jam agar rentang 3 hari, 7 hari, dan 30 hari terbaca utuh tanpa mengunduh puluhan ribu titik
+  Future<void> recordSensorHourlyLogPoint(String deviceId, SensorLogPoint point) async {
+    final int hourBucket = point.timestamp ~/ 3600000;
+    final String key = 'h_${hourBucket.toString().padLeft(8, '0')}';
+    final ref = _db.ref('devices/$deviceId/sensor_logs_hourly/$key');
+    await ref.set({
+      'timestamp': hourBucket * 3600000,
+      'soil_moisture': double.parse(point.soilMoisture.toStringAsFixed(1)),
+      'temperature': double.parse(point.temperature.toStringAsFixed(1)),
+      'humidity': double.parse(point.humidity.toStringAsFixed(1)),
+      'rain': point.rain,
+    });
+  }
+
+  // Stream log time-series sensor per menit berdasarkan rentang waktu (urut kronologis)
+  Stream<List<SensorLogPoint>> streamSensorLogs(
+    String deviceId, {
+    required int startAfterMs,
+    int limit = 1500,
+  }) {
+    final int startBucket = startAfterMs ~/ 60000;
+    final String startKey = 'm_${startBucket.toString().padLeft(10, '0')}';
+    final query = _db
+        .ref('devices/$deviceId/sensor_logs')
+        .orderByKey()
+        .startAt(startKey)
+        .limitToLast(limit);
+
+    return _mapSnapshotToSensorPoints(query, startAfterMs);
+  }
+
+  // Stream log time-series per jam untuk rentang multi-hari (3 Hari - 30 Hari)
+  Stream<List<SensorLogPoint>> streamSensorHourlyLogs(
+    String deviceId, {
+    required int startAfterMs,
+    int limit = 800,
+  }) {
+    final int startHour = startAfterMs ~/ 3600000;
+    final String startKey = 'h_${startHour.toString().padLeft(8, '0')}';
+    final query = _db
+        .ref('devices/$deviceId/sensor_logs_hourly')
+        .orderByKey()
+        .startAt(startKey)
+        .limitToLast(limit);
+
+    return _mapSnapshotToSensorPoints(query, startAfterMs);
+  }
+
+  Stream<List<SensorLogPoint>> _mapSnapshotToSensorPoints(Query query, int startAfterMs) {
+    return query.onValue.map((event) {
+      final value = event.snapshot.value;
+      if (value is Map<dynamic, dynamic>) {
+        final list = <SensorLogPoint>[];
+        value.forEach((_, val) {
+          if (val is Map<dynamic, dynamic>) {
+            final point = SensorLogPoint.fromMap(val);
+            if (point.timestamp >= startAfterMs) {
+              list.add(point);
+            }
+          }
+        });
+        list.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+        return list;
+      }
+      return <SensorLogPoint>[];
+    });
+  }
+
   // Catat riwayat penyiraman baru ke Firebase
   Future<void> logIrrigationHistory(String deviceId, IrrigationHistoryItem item) async {
     final ref = _db.ref('devices/$deviceId/history').push();

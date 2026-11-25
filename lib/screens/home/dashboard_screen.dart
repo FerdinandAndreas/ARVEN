@@ -82,7 +82,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       children: [
                         _buildOverviewTab(device, deviceProvider),
                         _buildActuatorTab(device, deviceProvider),
-                        _buildAnalyticsTab(device),
+                        _buildAnalyticsTab(device, deviceProvider),
                         _buildSettingsTab(device, deviceProvider),
                       ],
                     ),
@@ -237,19 +237,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     ),
                   ),
                   Text(
-                    'Update: ${device.sensors.updatedAt != null ? "${device.sensors.updatedAt!.hour.toString().padLeft(2, '0')}:${device.sensors.updatedAt!.minute.toString().padLeft(2, '0')}" : "Realtime"}',
+                    'Update: ${device.sensors.updatedAt != null ? "${device.sensors.updatedAt!.hour.toString().padLeft(2, '0')}:${device.sensors.updatedAt!.minute.toString().padLeft(2, '0')}" : "Menunggu data"}',
                     style: const TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
-                      color: AppColors.textLight,
+                      color: AppColors.textSecondary,
                     ),
                   ),
                 ],
               ),
               const SizedBox(height: 12),
 
-              // Sensor Grid (Adaptive 2, 3, or 4 columns with zero overflow)
-              _buildSensorGrid(device),
+              EnvironmentConditionsCard(device: device),
               const SizedBox(height: 18),
 
               // Tablet layout: Plant Condition & Trend Chart side-by-side
@@ -263,12 +262,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         soilMoisture: device.sensors.soilMoisture,
                         temperature: device.sensors.temperature,
                         isRaining: device.sensors.rain,
+                        humidity: device.sensors.humidity,
+                        moistureThreshold: device.settings.moistureThreshold,
+                        moistureThresholdMax: device.settings.moistureThresholdMax,
+                        maxTemperatureLimit: device.settings.maxTemperatureLimit,
+                        rainDelayEnabled: device.settings.rainDelayEnabled,
                       ),
                     ),
                     const SizedBox(width: 18),
                     Expanded(
                       flex: 6,
-                      child: MoistureTrendChart(currentMoisture: device.sensors.soilMoisture),
+                      child: MoistureTrendChart(
+                        device: device,
+                        deviceProvider: deviceProvider,
+                      ),
                     ),
                   ],
                 )
@@ -277,6 +284,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   soilMoisture: device.sensors.soilMoisture,
                   temperature: device.sensors.temperature,
                   isRaining: device.sensors.rain,
+                  humidity: device.sensors.humidity,
+                  moistureThreshold: device.settings.moistureThreshold,
+                  moistureThresholdMax: device.settings.moistureThresholdMax,
+                  maxTemperatureLimit: device.settings.maxTemperatureLimit,
+                  rainDelayEnabled: device.settings.rainDelayEnabled,
                 ),
 
               const SizedBox(height: 24),
@@ -296,7 +308,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   // TAB 3: ANALYTICS & TRENDS (Adaptive)
-  Widget _buildAnalyticsTab(DeviceData device) {
+  Widget _buildAnalyticsTab(DeviceData device, DeviceProvider deviceProvider) {
     return LayoutBuilder(
       builder: (context, constraints) {
         final bool isTablet = constraints.maxWidth >= 780;
@@ -319,7 +331,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
               const SizedBox(height: 4),
               const Text(
-                'Fluktuasi kelembapan tanah dan suhu udara 24 jam terakhir',
+                'Fluktuasi kelembapan tanah, suhu, dan kelembapan udara secara realtime',
                 style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
               ),
               const SizedBox(height: 16),
@@ -330,7 +342,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   children: [
                     Expanded(
                       flex: 6,
-                      child: MoistureTrendChart(currentMoisture: device.sensors.soilMoisture),
+                      child: MoistureTrendChart(
+                        device: device,
+                        deviceProvider: deviceProvider,
+                      ),
                     ),
                     const SizedBox(width: 18),
                     Expanded(
@@ -341,24 +356,43 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             soilMoisture: device.sensors.soilMoisture,
                             temperature: device.sensors.temperature,
                             isRaining: device.sensors.rain,
+                            humidity: device.sensors.humidity,
+                            moistureThreshold: device.settings.moistureThreshold,
+                            moistureThresholdMax: device.settings.moistureThresholdMax,
+                            maxTemperatureLimit: device.settings.maxTemperatureLimit,
+                            rainDelayEnabled: device.settings.rainDelayEnabled,
                           ),
                           const SizedBox(height: 18),
-                          const RecentActivityCard(),
+                          RecentActivityCard(
+                            historyList: deviceProvider.historyList,
+                            isSyncing: deviceProvider.isSyncing,
+                          ),
                         ],
                       ),
                     ),
                   ],
                 )
               else ...[
-                MoistureTrendChart(currentMoisture: device.sensors.soilMoisture),
+                MoistureTrendChart(
+                  device: device,
+                  deviceProvider: deviceProvider,
+                ),
                 const SizedBox(height: 16),
                 PlantConditionCard(
                   soilMoisture: device.sensors.soilMoisture,
                   temperature: device.sensors.temperature,
                   isRaining: device.sensors.rain,
+                  humidity: device.sensors.humidity,
+                  moistureThreshold: device.settings.moistureThreshold,
+                  moistureThresholdMax: device.settings.moistureThresholdMax,
+                  maxTemperatureLimit: device.settings.maxTemperatureLimit,
+                  rainDelayEnabled: device.settings.rainDelayEnabled,
                 ),
                 const SizedBox(height: 16),
-                const RecentActivityCard(),
+                RecentActivityCard(
+                  historyList: deviceProvider.historyList,
+                  isSyncing: deviceProvider.isSyncing,
+                ),
               ],
 
               const SizedBox(height: 24),
@@ -641,7 +675,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 250),
                     padding: const EdgeInsets.symmetric(vertical: 12),
-                    decoration: AppDecorations.raisedPill(isSelected: isSelected),
+                    decoration: isSelected
+                        ? BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [AppColors.primary, AppColors.primaryDark],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            borderRadius: BorderRadius.circular(28),
+                            boxShadow: AppDecorations.blueGlowShadow,
+                          )
+                        : AppDecorations.raisedPill(isSelected: false),
                     child: Column(
                       children: [
                         Icon(
@@ -934,129 +978,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
         ],
       ),
-    );
-  }
-
-  // Sensor Grid: Clean, modern 2x2 grid with adaptive columns
-  Widget _buildSensorGrid(DeviceData device) {
-    final s = device.sensors;
-    final threshold = device.settings.moistureThreshold;
-    final maxThreshold = device.settings.moistureThresholdMax;
-
-    // 1. Suhu Udara: Normal, Tinggi, Rendah
-    final bool isTempIdeal = s.temperature >= 20.0 && s.temperature <= 29.0;
-    final String tempBadge = isTempIdeal ? 'Normal' : (s.temperature > 29.0 ? 'Tinggi' : 'Rendah');
-    final Color tempBadgeBg = isTempIdeal
-        ? AppColors.badgeSuccessBg
-        : (s.temperature > 29.0 ? AppColors.badgeWarningBg : const Color(0xFFE0F2FE));
-    final Color tempBadgeText = isTempIdeal
-        ? AppColors.badgeSuccessText
-        : (s.temperature > 29.0 ? AppColors.badgeWarningText : const Color(0xFF0369A1));
-
-    // 2. Kelembapan Tanah: Kering, Normal, Basah
-    final String moistureBadge;
-    final Color moistureBadgeBg;
-    final Color moistureBadgeText;
-    if (s.soilMoisture < threshold) {
-      moistureBadge = 'Kering';
-      moistureBadgeBg = AppColors.badgeDangerBg;
-      moistureBadgeText = AppColors.badgeDangerText;
-    } else if (s.soilMoisture > maxThreshold) {
-      moistureBadge = 'Basah';
-      moistureBadgeBg = const Color(0xFFE8F0FE);
-      moistureBadgeText = const Color(0xFF1967D2);
-    } else {
-      moistureBadge = 'Normal';
-      moistureBadgeBg = AppColors.badgeSuccessBg;
-      moistureBadgeText = AppColors.badgeSuccessText;
-    }
-
-    // 3. Kelembapan Udara: Kering, Normal, Lembap
-    final bool isHumidNormal = s.humidity >= 50.0 && s.humidity <= 85.0;
-    final String humidBadge = isHumidNormal ? 'Normal' : (s.humidity > 85.0 ? 'Lembap' : 'Rendah');
-    final Color humidBadgeBg = isHumidNormal
-        ? AppColors.badgeSuccessBg
-        : (s.humidity > 85.0 ? const Color(0xFFE8F0FE) : AppColors.badgeWarningBg);
-    final Color humidBadgeText = isHumidNormal
-        ? AppColors.badgeSuccessText
-        : (s.humidity > 85.0 ? const Color(0xFF1967D2) : AppColors.badgeWarningText);
-
-    // 4. Deteksi Hujan: Kering (Tidak Hujan) / Basah (Hujan)
-    final String rainValue = s.rain ? 'Basah' : 'Kering';
-    final String rainBadge = s.rain ? 'Hujan' : 'Tidak Hujan';
-    final Color rainBadgeBg = s.rain ? const Color(0xFFE8F0FE) : AppColors.badgeSuccessBg;
-    final Color rainBadgeText = s.rain ? const Color(0xFF1967D2) : AppColors.badgeSuccessText;
-
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final double w = constraints.maxWidth;
-        int crossAxisCount = 2;
-        double mainAxisExtent = 148;
-
-        if (w >= 750) {
-          crossAxisCount = 4;
-          mainAxisExtent = 146;
-        } else if (w >= 520) {
-          crossAxisCount = 3;
-          mainAxisExtent = 146;
-        } else if (w < 350) {
-          crossAxisCount = 2;
-          mainAxisExtent = 154;
-        }
-
-        return GridView(
-          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: crossAxisCount,
-            crossAxisSpacing: w < 360 ? 10 : 14,
-            mainAxisSpacing: w < 360 ? 10 : 14,
-            mainAxisExtent: mainAxisExtent,
-          ),
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          children: [
-            SensorCard(
-              icon: Icons.thermostat_rounded,
-              iconColor: const Color(0xFFF97316),
-              iconBgColor: const Color(0xFFFFF4EC),
-              title: 'Suhu Udara',
-              value: '${s.temperature.toStringAsFixed(1)} °C',
-              badgeText: tempBadge,
-              badgeBgColor: tempBadgeBg,
-              badgeTextColor: tempBadgeText,
-            ),
-            SensorCard(
-              icon: Icons.water_drop_rounded,
-              iconColor: const Color(0xFF2563EB),
-              iconBgColor: const Color(0xFFEFF6FF),
-              title: 'Kelembapan Tanah',
-              value: '${s.soilMoisture.toStringAsFixed(0)}%',
-              badgeText: moistureBadge,
-              badgeBgColor: moistureBadgeBg,
-              badgeTextColor: moistureBadgeText,
-            ),
-            SensorCard(
-              icon: Icons.cloud_outlined,
-              iconColor: const Color(0xFF0284C7),
-              iconBgColor: const Color(0xFFF0F9FF),
-              title: 'Kelembapan Udara',
-              value: '${s.humidity.toStringAsFixed(0)}%',
-              badgeText: humidBadge,
-              badgeBgColor: humidBadgeBg,
-              badgeTextColor: humidBadgeText,
-            ),
-            SensorCard(
-              icon: s.rain ? Icons.grain_rounded : Icons.wb_sunny_rounded,
-              iconColor: s.rain ? const Color(0xFF4F46E5) : const Color(0xFFF59E0B),
-              iconBgColor: s.rain ? const Color(0xFFEEF2FF) : const Color(0xFFFFFBEB),
-              title: 'Deteksi Hujan',
-              value: rainValue,
-              badgeText: rainBadge,
-              badgeBgColor: rainBadgeBg,
-              badgeTextColor: rainBadgeText,
-            ),
-          ],
-        );
-      },
     );
   }
 

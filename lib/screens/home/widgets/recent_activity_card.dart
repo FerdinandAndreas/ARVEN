@@ -1,60 +1,55 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_decorations.dart';
+import '../../../models/device_data_model.dart';
 
-class ActivityItem {
-  final String title;
-  final String time;
-  final String description;
-  final Color dotColor;
-
-  const ActivityItem({
-    required this.title,
-    required this.time,
-    required this.description,
-    required this.dotColor,
-  });
-}
-
+/// Kartu log aktivitas penyiraman terkini yang membaca langsung riwayat nyata dari Firebase.
 class RecentActivityCard extends StatelessWidget {
-  const RecentActivityCard({super.key});
+  final List<IrrigationHistoryItem> historyList;
+  final bool isSyncing;
+
+  const RecentActivityCard({
+    super.key,
+    required this.historyList,
+    this.isSyncing = false,
+  });
+
+  String _formatDuration(int totalSec) {
+    if (totalSec < 60) return '$totalSec dtk';
+    final int m = totalSec ~/ 60;
+    final int s = totalSec % 60;
+    return s == 0 ? '$m mnt' : '$m mnt $s dtk';
+  }
+
+  String _formatVolume(double liters) {
+    if (liters < 1.0) {
+      return '${(liters * 1000).toStringAsFixed(0)} mL';
+    }
+    return '${liters.toStringAsFixed(1)} L';
+  }
+
+  Color _statusColor(String status) {
+    if (status.contains('Cut-Off') || status.contains('Dihentikan')) {
+      return AppColors.primaryDark;
+    }
+    if (status.contains('Hujan')) {
+      return AppColors.badgeWarningText;
+    }
+    return AppColors.badgeSuccessText;
+  }
 
   @override
   Widget build(BuildContext context) {
-    final List<ActivityItem> activities = [
-      const ActivityItem(
-        title: 'Penyiraman otomatis selesai',
-        time: '12:45',
-        description: 'Durasi 15 detik, kelembapan tanah naik ke 66%',
-        dotColor: AppColors.primary,
-      ),
-      const ActivityItem(
-        title: 'Sinkronisasi data sensor',
-        time: '12:43',
-        description: 'Mikroklimat tanah dan temperatur berhasil sinkron',
-        dotColor: AppColors.primaryLight,
-      ),
-      const ActivityItem(
-        title: 'Evaluasi ambang batas',
-        time: '08:12',
-        description: 'Sistem aktif dalam mode otomatis kelembapan tanah',
-        dotColor: AppColors.warning,
-      ),
-      const ActivityItem(
-        title: 'Penyiraman terjadwal pagi',
-        time: '06:30',
-        description: 'Durasi 20 detik berhasil dieksekusi pompa',
-        dotColor: AppColors.success,
-      ),
-    ];
+    final recentItems = historyList.take(5).toList();
 
     return Container(
+      width: double.infinity,
       padding: const EdgeInsets.all(20),
       decoration: AppDecorations.raisedCard(radius: 22),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header Row
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -77,12 +72,12 @@ class RecentActivityCard extends StatelessWidget {
                   color: AppColors.badgeInfoBg,
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Text(
-                  'Telemetri Riwayat',
-                  style: TextStyle(
+                child: Text(
+                  '${historyList.length} Riwayat',
+                  style: const TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w700,
-                    color: AppColors.primary,
+                    color: AppColors.primaryDark,
                   ),
                 ),
               ),
@@ -90,88 +85,114 @@ class RecentActivityCard extends StatelessWidget {
           ),
           const SizedBox(height: 16),
 
-          // Items Column (without ListView overhead)
-          ...activities.asMap().entries.map((entry) {
-            final index = entry.key;
-            final item = entry.value;
-            final isLast = index == activities.length - 1;
-
-            return Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 6),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Container(
-                        margin: const EdgeInsets.only(top: 5),
-                        width: 9,
-                        height: 9,
-                        decoration: BoxDecoration(
-                          color: item.dotColor,
-                          shape: BoxShape.circle,
-                          boxShadow: [
-                            BoxShadow(
-                              color: item.dotColor.withValues(alpha: 0.4),
-                              blurRadius: 6,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    item.title,
-                                    style: const TextStyle(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w700,
-                                      color: AppColors.textPrimary,
-                                    ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Text(
-                                  item.time,
-                                  style: const TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w500,
-                                    color: AppColors.textLight,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              item.description,
-                              style: const TextStyle(
-                                fontSize: 12,
-                                color: AppColors.textSecondary,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
+          if (isSyncing && recentItems.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 20),
+              child: Center(
+                child: Text(
+                  'Memuat riwayat aktivitas perangkat...',
+                  style: TextStyle(fontSize: 12.5, color: AppColors.textSecondary),
                 ),
-                if (!isLast)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 4),
-                    child: Divider(color: AppColors.divider, height: 1),
+              ),
+            )
+          else if (recentItems.isEmpty)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 18),
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.cardBorder, width: 0.9),
+              ),
+              child: const Text(
+                'Belum ada aktivitas penyiraman tercatat. Log akan muncul otomatis saat pompa selesai beroperasi.',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: AppColors.textSecondary,
+                  height: 1.4,
+                ),
+              ),
+            )
+          else
+            ...recentItems.asMap().entries.map((entry) {
+              final int index = entry.key;
+              final item = entry.value;
+              final bool isLast = index == recentItems.length - 1;
+              final Color dotColor = _statusColor(item.status);
+              final dt = DateTime.fromMillisecondsSinceEpoch(item.timestamp);
+              final String timeText = DateFormat('dd/MM HH:mm').format(dt);
+              final String detailText =
+                  'Durasi ${_formatDuration(item.durationSec)}, ${_formatVolume(item.waterLiters)} (${item.status})';
+
+              return Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          margin: const EdgeInsets.only(top: 5),
+                          width: 9,
+                          height: 9,
+                          decoration: BoxDecoration(
+                            color: dotColor,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      item.title,
+                                      style: const TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w700,
+                                        color: AppColors.textPrimary,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    timeText,
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                      color: AppColors.textSecondary,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                detailText,
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: AppColors.textSecondary,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-              ],
-            );
-          }),
+                  if (!isLast)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 4),
+                      child: Divider(color: AppColors.divider, height: 1),
+                    ),
+                ],
+              );
+            }),
         ],
       ),
     );
