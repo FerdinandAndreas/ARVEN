@@ -1,34 +1,3 @@
-/**
- * ============================================================================
- * PROYEK AKHIR IoT: ARVEN SMART FARMING SYSTEM (ESP32 FIRMWARE v2.1)
- * ============================================================================
- * Mikrokontroler : ESP32 DevKit V1 (30 / 38 Pin)
- * Database       : Firebase Realtime Database (REST HTTPS)
- * Host Database  : https://arven-iot-default-rtdb.asia-southeast1.firebasedatabase.app
- * Device ID      : arven_device_01
- *
- * MAPPING PIN HARDWARE (Sesuai Panduan Wiring ARVEN):
- * 1. Soil Moisture Sensor (A0)        -> GPIO 34 (ADC1_CH6)
- * 2. DHT22 Sensor Suhu & Kelembapan   -> GPIO 4
- * 3. Raindrop Sensor (D0 Digital)     -> GPIO 32 (LOW = Air Hujan Terdeteksi)
- * 4. Modul Relay 12V 1-Channel (IN)   -> GPIO 26 (Active LOW)
- * 5. LED Indikator (+ Resistor 220Ω)  -> GPIO 2
- *
- * FITUR LOGIKA TERBARU (Sinkron dengan Aplikasi Flutter):
- * - Mode Otomatis (Histeresis Min-Max):
- *     * Pompa ON  saat soil_moisture <= moisture_threshold (misal 40%)
- *     * Pompa OFF saat soil_moisture >= moisture_threshold_max (misal 85%)
- *     * Dilengkapi Jeda Peresapan Air (Soak Time) anti-chattering
- * - Mode Terjadwal:
- *     * Mendukung durasi fleksibel dalam detik maupun menit (s.d. 3600 detik)
- *     * Sinkronisasi jam akurat WIB (UTC+7) via NTP Server
- * - Mode Manual:
- *     * Bebas nyala/mati oleh operator aplikasi
- *     * Dilengkapi Auto Cut-Off pengaman (manual_safety_timeout_min) jika lupa
- * - Proteksi Hujan (Rain Delay): Menunda irigasi otomatis & jadwal saat hujan
- * ============================================================================
- */
-
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
@@ -36,32 +5,27 @@
 #include <DHT.h>
 #include <time.h>
 
-// ============================================================================
-// 1. KONFIGURASI WI-FI & FIREBASE
-// ============================================================================
-const char* WIFI_SSID     = "MHS-PNM";       // Ganti dengan SSID Wi-Fi Anda
-const char* WIFI_PASSWORD = "sustainability";   // Ganti dengan Password Wi-Fi Anda
+// 1. KONFIGURASI WI-FI dan FIREBASE
+const char* WIFI_SSID     = "MHS-PNM";       
+const char* WIFI_PASSWORD = "sustainability";   
 
 const char* FIREBASE_HOST = "https://arven-iot-default-rtdb.asia-southeast1.firebasedatabase.app";
 const char* DEVICE_ID     = "arven_device_01";
 
-// Isi jika Firebase Rules Anda memerlukan Database Secret / Auth Token (opsional)
+// Database Secret / Auth Token (opsional)
 const char* FIREBASE_AUTH = "";
 
-// ============================================================================
 // 2. MAPPING PIN HARDWARE
-// ============================================================================
-#define PIN_SOIL_ANALOG    34   // Sensor Kelembapan Tanah (Analog ADC1)
-#define PIN_DHT            4    // Sensor Suhu & Kelembapan Udara DHT22
-#define PIN_RAIN_DIGITAL   32   // Sensor Hujan Digital (LOW = Basah/Hujan)
-#define PIN_RELAY_PUMP     26   // Modul Relay Pompa Air 12V (Active LOW)
-#define PIN_STATUS_LED     2    // LED Indikator Pompa (GPIO 2 + R 220 Ohm)
+#define PIN_SOIL_ANALOG    34   // Sensor Kelembapan Tanah
+#define PIN_DHT            4    // Sensor Suhu dan Kelembapan Udara DHT22
+#define PIN_RAIN_DIGITAL   32   // Sensor Hujan Digital
+#define PIN_RELAY_PUMP     26   // Modul Relay Pompa Air 12V 
+#define PIN_STATUS_LED     2    // LED Indikator Pompa 
 
 #define DHT_TYPE           DHT22
 DHT dht(PIN_DHT, DHT_TYPE);
 
-// Kalibrasi ADC Kelembapan Tanah (12-bit: 0 - 4095)
-// Sesuaikan nilai ini dengan hasil uji sensor Anda di udara vs di air
+// Kalibrasi ADC Kelembapan Tanah
 const int AIR_VALUE   = 3500;  // Nilai ADC saat probe kering di udara (0%)
 const int WATER_VALUE = 1400;  // Nilai ADC saat probe tercelup air (100%)
 
@@ -71,9 +35,7 @@ const int WATER_VALUE = 1400;  // Nilai ADC saat probe tercelup air (100%)
 const int RELAY_ON  = HIGH;
 const int RELAY_OFF = LOW;
 
-// ============================================================================
-// 3. STRUKTUR DATA & PARAMETER SISTEM
-// ============================================================================
+// 3. STRUKTUR DATA dan PARAMETER SISTEM
 struct DeviceSettings {
   int moistureThreshold       = 40;   // Batas min pompa ON (%)
   int moistureThresholdMax    = 85;   // Target max pompa OFF (%)
@@ -89,7 +51,7 @@ struct DeviceSettings {
   String time2                = "16:30";
   String time3                = "12:00";
   String time4                = "20:00";
-  int scheduleDurationSec     = 20;   // Durasi siram terjadwal (detik, bisa menit-menit)
+  int scheduleDurationSec     = 20;   // Durasi siram terjadwal
 } deviceSettings;
 
 struct SensorReadings {
@@ -117,14 +79,12 @@ unsigned long lastSensorSyncTime    = 0;
 unsigned long lastSensorLogTime     = 0;
 unsigned long lastHeartbeatTime     = 0;
 
-// NTP Server untuk Waktu Indonesia Barat (WIB = UTC+7 = 25200 detik)
+// NTP Server untuk Waktu Indonesia Barat
 const char* NTP_SERVER         = "pool.ntp.org";
 const long  GMT_OFFSET_SEC     = 25200;
 const int   DAYLIGHT_OFFSET_SEC = 0;
 
-// ============================================================================
 // 4. PROTOTYPE FUNGSI
-// ============================================================================
 void connectWiFi();
 void syncNtpTime();
 void readSensors();
@@ -140,9 +100,7 @@ void fetchControlAndSettingsFromFirebase();
 bool getFormattedCurrentTime(String& outTime);
 uint64_t getEpochTimeMs();
 
-// ============================================================================
 // 5. SETUP
-// ============================================================================
 void setup() {
   Serial.begin(115200);
   delay(1000);
@@ -167,7 +125,7 @@ void setup() {
   fetchControlAndSettingsFromFirebase();
   previousMode = activeMode;
 
-  // Baca sensor & kirim status pertama
+  // Baca sensor dan kirim status pertama
   readSensors();
   sendTelemetryToFirebase();
   sendSensorLogToFirebase();
@@ -179,9 +137,7 @@ void setup() {
   Serial.println("[SYSTEM] Inisialisasi selesai. Sistem irigasi siap beroperasi.\n");
 }
 
-// ============================================================================
 // 6. MAIN LOOP
-// ============================================================================
 void loop() {
   if (WiFi.status() != WL_CONNECTED) {
     connectWiFi();
@@ -193,7 +149,7 @@ void loop() {
   // 2. Jalankan logika kontrol irigasi (Manual / Terjadwal / Otomatis Min-Max)
   processIrrigationLogic();
 
-  // 3. Tarik perintah kontrol & pengaturan terbaru dari Firebase tiap 2.5 detik
+  // 3. Tarik perintah kontrol dan pengaturan terbaru dari Firebase tiap 2.5 detik
   if (millis() - lastFetchTime >= 2500) {
     lastFetchTime = millis();
     fetchControlAndSettingsFromFirebase();
@@ -220,11 +176,9 @@ void loop() {
   delay(200);
 }
 
-// ============================================================================
-// 7. LOGIKA KONTROL IRIGASI (SINKRON DENGAN APLIKASI FLUTTER)
-// ============================================================================
+// 7. LOGIKA KONTROL IRIGASI
 void processIrrigationLogic() {
-  // Pengaman saat perpindahan mode operasional: matikan pompa agar tidak nyangkut
+  // Pengaman saat perpindahan mode operasional: matikan pompa supaya tidak nyangkut
   if (activeMode != previousMode) {
     Serial.printf("[MODE] Mode berubah dari '%s' ke '%s'.\n", previousMode.c_str(), activeMode.c_str());
     if (isPumpActive) {
@@ -274,7 +228,7 @@ void processIrrigationLogic() {
     return; // Jangan mulai penyiraman selama hujan masih turun
   }
 
-  // B. MODE TERJADWAL (Durasi fleksibel dalam detik / menit)
+  // B. MODE TERJADWAL
   if (activeMode == "scheduled") {
     if (isPumpActive) {
       if (millis() - pumpStartTime >= pumpDurationLimit) {
@@ -288,7 +242,7 @@ void processIrrigationLogic() {
     return;
   }
 
-  // C. MODE OTOMATIS (Histeresis Ambang Minimum ON -> Target Maksimum OFF)
+  // C. MODE OTOMATIS 
   if (activeMode == "auto_moisture") {
     bool inSoakPeriod = hasFinishedAutoCycle &&
                         ((millis() - lastSoakTimestamp) < ((unsigned long)deviceSettings.soakIntervalSec * 1000UL));
@@ -448,11 +402,9 @@ void resetManualCommandInFirebase() {
   http.end();
 }
 
-// ============================================================================
 // 8. PEMBACAAN SENSOR FISIK
-// ============================================================================
 void readSensors() {
-  // 1. Kelembapan Tanah Analog (Rata-rata 5 sampel agar pembacaan stabil)
+  // 1. Kelembapan Tanah Analog
   long totalRaw = 0;
   for (int i = 0; i < 5; i++) {
     totalRaw += analogRead(PIN_SOIL_ANALOG);
@@ -482,9 +434,7 @@ void readSensors() {
   currentSensors.isRaining = (digitalRead(PIN_RAIN_DIGITAL) == LOW);
 }
 
-// ============================================================================
 // 9. KOMUNIKASI DATABASE FIREBASE (REST HTTPS)
-// ============================================================================
 void sendTelemetryToFirebase() {
   if (WiFi.status() != WL_CONNECTED) return;
 
@@ -638,7 +588,7 @@ void fetchControlAndSettingsFromFirebase() {
   }
   http.end();
 
-  // B. Tarik Parameter Settings & Jadwal Terbaru
+  // B. Tarik Parameter Settings dan Jadwal Terbaru
   String urlSettings = String(FIREBASE_HOST) + "/devices/" + DEVICE_ID + "/settings.json";
   if (strlen(FIREBASE_AUTH) > 0) urlSettings += "?auth=" + String(FIREBASE_AUTH);
 
@@ -687,9 +637,7 @@ void fetchControlAndSettingsFromFirebase() {
   http.end();
 }
 
-// ============================================================================
 // 10. UTILITAS KONEKSI & WAKTU
-// ============================================================================
 void connectWiFi() {
   if (WiFi.status() == WL_CONNECTED) return;
 
